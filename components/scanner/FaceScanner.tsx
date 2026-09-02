@@ -5,7 +5,7 @@ import Webcam from 'react-webcam'
 import { Camera, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { extractEmbedding, setFaceLoadCallback } from '@/lib/face'
 import { createClient } from '@/lib/supabase/client'
-import { cn, formatWaktu } from '@/lib/utils'
+import { cn, formatWaktu, getTanggalHariIni } from '@/lib/utils'
 import { CameraPermissionGuide } from './CameraPermissionGuide'
 import type { AbsensiLog, Anggota } from '@/types'
 
@@ -193,7 +193,7 @@ export function FaceScanner({
         setTimeout(() => setScanState('idle'), 3000)
         return
       }
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTanggalHariIni()
 
       const { data: existing } = await supabase
         .from('attendance_logs')
