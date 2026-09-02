@@ -25,9 +25,22 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
 
+  /**
+   * Ambil frame langsung dari video element (bukan screenshot base64).
+   * Ini lebih konsisten dengan cara FaceScanner mengambil frame —
+   * keduanya sekarang melewati extractEmbedding() dengan sumber yang sama.
+   */
   const capture = useCallback(() => {
-    const imageSrc = webcamRef.current?.getScreenshot()
-    if (imageSrc) setCapturedImage(imageSrc)
+    const video = webcamRef.current?.video
+    if (!video) return
+    // Gambar frame video ke canvas untuk preview
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0)
+    setCapturedImage(canvas.toDataURL('image/jpeg', 0.9))
   }, [])
 
   const processImage = async (
@@ -47,7 +60,6 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
 
       setStatus('Menyimpan ke database...')
 
-      // Simpan embedding ke Supabase
       const { data, error } = await supabase
         .from('anggota')
         .update({ face_embedding: embedding })
@@ -77,7 +89,6 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.src = url
@@ -98,6 +109,11 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
           <p className="font-medium text-gray-900">{anggota.nama}</p>
           <p className="text-sm text-gray-500">No. {anggota.nomor_anggota}</p>
         </div>
+      </div>
+
+      {/* Panduan penting */}
+      <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        💡 Tips: Foto dalam kondisi pencahayaan yang sama dengan saat absensi (misal: di dalam ruangan latihan)
       </div>
 
       {/* Mode pilihan */}
@@ -142,12 +158,12 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
                   className="w-full h-full object-cover"
                   mirrored
                 />
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-40 h-48 rounded-full border-2 border-dashed border-white/60" />
                 </div>
               </div>
               <p className="text-xs text-gray-500 text-center">
-                Posisikan wajah di dalam lingkaran lalu tekan &quot;Ambil Foto&quot;
+                Posisikan wajah di dalam lingkaran, pastikan pencahayaan cukup
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setMode('choose')} className="flex-1">
@@ -167,7 +183,12 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
                 className="rounded-xl w-full aspect-video object-cover"
               />
               {status && (
-                <p className={`text-sm text-center ${status.includes('Berhasil') ? 'text-green-600' : status.includes('Gagal') || status.includes('tidak') ? 'text-red-600' : 'text-gray-600'}`}>
+                <p className={`text-sm text-center ${
+                  status.includes('Berhasil') ? 'text-green-600'
+                  : status.includes('Gagal') || status.includes('tidak') ? 'text-red-600'
+                  : 'text-gray-600'
+                }`}>
+                  {loading && <Loader2 className="inline h-3 w-3 animate-spin mr-1" />}
                   {status}
                 </p>
               )}
@@ -196,7 +217,7 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
         </div>
       )}
 
-      {/* Mode upload — preview langsung diproses */}
+      {/* Mode upload */}
       {mode === 'upload' && capturedImage && (
         <div className="flex flex-col gap-3">
           <img
@@ -207,7 +228,11 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
           {status && (
             <div className="flex items-center gap-2 justify-center">
               {loading && <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
-              <p className={`text-sm ${status.includes('Berhasil') ? 'text-green-600' : status.includes('Gagal') || status.includes('tidak') ? 'text-red-600' : 'text-gray-600'}`}>
+              <p className={`text-sm ${
+                status.includes('Berhasil') ? 'text-green-600'
+                : status.includes('Gagal') || status.includes('tidak') ? 'text-red-600'
+                : 'text-gray-600'
+              }`}>
                 {status}
               </p>
             </div>

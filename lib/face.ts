@@ -2,18 +2,19 @@
 
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision'
 
-// Simpan instance IMAGE landmarker (dipakai untuk semua source termasuk video)
 let imageLandmarker: FaceLandmarker | null = null
 let initPromise: Promise<FaceLandmarker> | null = null
 
-// Path model — gunakan lokal jika ada, fallback ke CDN
 const MODEL_PATH = '/models/face_landmarker.task'
 const MODEL_CDN =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
 const WASM_CDN =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
 
-// Callback untuk loading progress (opsional, dipakai komponen)
+// Ukuran standar untuk semua input — konsisten antara enroll dan scan
+const CANONICAL_W = 640
+const CANONICAL_H = 480
+
 type LoadCallback = (msg: string) => void
 let onLoadProgress: LoadCallback | null = null
 
@@ -26,7 +27,6 @@ async function createLandmarkerWithFallback(): Promise<FaceLandmarker> {
 
   const vision = await FilesetResolver.forVisionTasks(WASM_CDN)
 
-  // Cek apakah model lokal tersedia
   let modelPath = MODEL_CDN
   try {
     const res = await fetch(MODEL_PATH, { method: 'HEAD' })
@@ -35,7 +35,7 @@ async function createLandmarkerWithFallback(): Promise<FaceLandmarker> {
       onLoadProgress?.('Memuat model lokal...')
     }
   } catch {
-    // model lokal tidak ada, lanjut pakai CDN
+    // model lokal tidak ada, pakai CDN
   }
 
   const options = {
@@ -48,7 +48,6 @@ async function createLandmarkerWithFallback(): Promise<FaceLandmarker> {
     numFaces: 1,
   }
 
-  // Coba GPU dulu, fallback ke CPU jika gagal
   try {
     onLoadProgress?.('Inisialisasi GPU...')
     const lm = await FaceLandmarker.createFromOptions(vision, options)
@@ -68,61 +67,54 @@ async function createLandmarkerWithFallback(): Promise<FaceLandmarker> {
 
 async function getLandmarker(): Promise<FaceLandmarker> {
   if (imageLandmarker) return imageLandmarker
-
-  // Pastikan hanya satu inisialisasi berjalan sekaligus
   if (!initPromise) {
     initPromise = createLandmarkerWithFallback()
-      .then((lm) => {
-        imageLandmarker = lm
-        initPromise = null
-        return lm
-      })
-      .catch((err) => {
-        initPromise = null
-        throw err
-      })
+      .then((lm) => { imageLandmarker = lm; initPromise = null; return lm })
+      .catch((err) => { initPromise = null; throw err })
   }
-
   return initPromise
 }
 
 /**
- * Ekstrak embedding wajah dari berbagai sumber:
- * - HTMLVideoElement  → gambar ke canvas dulu (lebih stabil)
- * - HTMLImageElement  → langsung detect
- * - HTMLCanvasElement → langsung detect
+ * Konversi semua sumber ke canvas canonical 640×480 TANPA mirror.
  *
- * Menggunakan 478 landmark MediaPipe FaceLandmarker,
- * di-downsample ke 128D lalu dinormalisasi L2.
+ * KUNCI KONSISTENSI:
+ * - Webcam di-render mirrored di UI, tapi kita TIDAK mirror canvas sebelum detect.
+ * - Semua sumber (video, image, canvas) di-normalize ke ukuran yang sama.
+ * - Dengan begitu embedding saat enroll == embedding saat scan.
+ */
+function toCanonicalCanvas(
+  source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
+): HTMLCanvasElement | null {
+  const canvas = document.createElement('canvas')
+  canvas.width = CANONICAL_W
+  canvas.height = CANONICAL_H
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  // Gambar langsung tanpa flip — konsisten untuk semua sumber
+  ctx.drawImage(source, 0, 0, CANONICAL_W, CANONICAL_H)
+  return canvas
+}
+
+/**
+ * Ekstrak embedding wajah dari berbagai sumber.
+ * Semua sumber di-normalize ke 640×480 sebelum diproses.
  */
 export async function extractEmbedding(
   source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
 ): Promise<number[] | null> {
   try {
-    const landmarker = await getLandmarker()
-
-    let detectSource: HTMLImageElement | HTMLCanvasElement
-
+    // Validasi video sudah siap
     if (source instanceof HTMLVideoElement) {
-      const video = source
-      if (video.readyState < 2 || video.videoWidth === 0) return null
-
-      // Resize ke 640×480 — ukuran optimal untuk MediaPipe
-      // Resolusi lebih tinggi tidak menambah akurasi tapi memperlambat proses
-      const TARGET_W = 640
-      const TARGET_H = 480
-      const canvas = document.createElement('canvas')
-      canvas.width = TARGET_W
-      canvas.height = TARGET_H
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return null
-      ctx.drawImage(video, 0, 0, TARGET_W, TARGET_H)
-      detectSource = canvas
-    } else {
-      detectSource = source
+      if (source.readyState < 2 || source.videoWidth === 0) return null
     }
 
-    const result = landmarker.detect(detectSource)
+    const canvas = toCanonicalCanvas(source)
+    if (!canvas) return null
+
+    const landmarker = await getLandmarker()
+    const result = landmarker.detect(canvas)
 
     if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
       return null
@@ -135,12 +127,19 @@ export async function extractEmbedding(
   }
 }
 
-/** Bangun embedding 128D ternormalisasi dari landmark MediaPipe */
+/**
+ * Bangun embedding 128D ternormalisasi dari landmark MediaPipe.
+ * Hanya pakai koordinat X dan Y (bukan Z) — lebih stabil terhadap
+ * variasi jarak kamera dan ekspresi wajah.
+ */
 function buildEmbedding(landmarks: Array<{ x: number; y: number; z: number }>): number[] {
+  // Pakai X,Y saja — Z sangat sensitif terhadap jarak ke kamera
+  // dan menyebabkan similarity rendah padahal orang sama
   const raw: number[] = []
   for (const lm of landmarks) {
-    raw.push(lm.x, lm.y, lm.z)
+    raw.push(lm.x, lm.y)
   }
+  // 478 landmark × 2 = 956 nilai → downsample ke 128D
   return normalizeL2(downsampleTo128(raw))
 }
 
