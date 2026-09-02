@@ -146,8 +146,7 @@ async function DashboardData() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Link
           href="/scanner"
-          target="_blank"
-          className="flex items-center gap-3 p-4 bg-red-700 hover:bg-red-800 text-white rounded-xl transition-colors"
+          className="flex items-center gap-3 p-4 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white rounded-xl transition-colors touch-manipulation"
         >
           <ScanFace className="h-6 w-6" />
           <div>
