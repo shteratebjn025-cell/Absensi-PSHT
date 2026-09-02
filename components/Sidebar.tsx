@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   X,
+  UserCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -24,9 +25,7 @@ const navItems = [
   { href: '/absensi', label: 'Absensi', icon: ScanFace },
   { href: '/laporan', label: 'Laporan', icon: FileSpreadsheet },
   { href: '/pengaturan', label: 'Pengaturan', icon: Settings },
-]
-
-export function Sidebar() {
+]export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -85,6 +84,18 @@ export function Sidebar() {
         >
           <Monitor className="h-5 w-5 shrink-0" />
           Mode TV
+        </Link>
+
+        {/* Link Enroll Wajah — buka di tab baru agar tidak ganggu dashboard */}
+        <Link
+          href="/enroll"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-white transition-colors"
+        >
+          <UserCheck className="h-5 w-5 shrink-0" />
+          Enroll Wajah
         </Link>
       </nav>
 
