@@ -8,9 +8,12 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
-      {/* Konten utama dengan offset sidebar */}
-      <main className="md:ml-64 min-h-screen">
-        <div className="p-4 md:p-8 pt-16 md:pt-8">{children}</div>
+      {/*
+        Desktop: offset 56px (w-14, collapsed) — sidebar expand pakai overlay hover, tidak geser konten
+        Mobile: tidak ada offset kiri, tapi ada padding bawah untuk bottom navbar
+      */}
+      <main className="md:ml-14 min-h-screen">
+        <div className="p-4 md:p-8 pb-24 md:pb-8">{children}</div>
       </main>
     </div>
   )
