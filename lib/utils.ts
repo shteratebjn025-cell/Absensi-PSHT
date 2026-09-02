@@ -6,11 +6,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatTanggal(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
+  // Tambahkan waktu tengah hari agar tidak kena masalah UTC offset
+  return new Date(`${dateStr}T12:00:00`).toLocaleDateString('id-ID', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'Asia/Jakarta',
   })
 }
 
@@ -23,7 +25,8 @@ export function formatWaktu(dateStr: string): string {
 }
 
 export function getTanggalHariIni(): string {
-  return new Date().toISOString().split('T')[0]
+  // Gunakan timezone WIB (Asia/Jakarta) agar tanggal tidak meleset saat UTC berganti hari
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
 }
 
 export function getStatusColor(status: string): string {
