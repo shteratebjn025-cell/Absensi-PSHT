@@ -1,9 +1,29 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { FaceScanner } from '@/components/scanner/FaceScanner'
+import { createClient } from '@/lib/supabase/client'
 import { Monitor } from 'lucide-react'
 
 export default function ScannerPublikPage() {
+  const supabase = createClient()
+  const [rantingKiosk, setRantingKiosk] = useState<string>('')
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    // Baca ranting kiosk dari Supabase app_settings
+    supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'ranting_kiosk')
+      .maybeSingle()
+      .then(({ data }) => {
+        setRantingKiosk(data?.value ?? '')
+        setLoaded(true)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* Header mini */}
@@ -12,7 +32,14 @@ export default function ScannerPublikPage() {
           <div className="w-7 h-7 bg-white rounded flex items-center justify-center">
             <span className="text-red-700 font-black text-xs">PS</span>
           </div>
-          <span className="text-white font-semibold text-sm">PSHT Bojonegoro — Scanner Absensi</span>
+          <div>
+            <span className="text-white font-semibold text-sm">PSHT Bojonegoro — Scanner Absensi</span>
+            {rantingKiosk && (
+              <span className="ml-2 text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">
+                {rantingKiosk}
+              </span>
+            )}
+          </div>
         </div>
         <a
           href="/tv"
@@ -24,18 +51,23 @@ export default function ScannerPublikPage() {
         </a>
       </header>
 
-      {/* Scanner utama */}
+      {/* Scanner utama — tunggu settings loaded agar rantingFilter tidak berubah saat scan */}
       <main className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <FaceScanner
-            lokasiKiosk="Kiosk Publik"
-            adminId="kiosk-publik"
-          />
+          {loaded && (
+            <FaceScanner
+              lokasiKiosk={rantingKiosk ? `Kiosk ${rantingKiosk}` : 'Kiosk Publik'}
+              adminId="kiosk-publik"
+              rantingFilter={rantingKiosk}
+            />
+          )}
         </div>
       </main>
 
       <footer className="text-center py-3 text-gray-600 text-xs">
-        Arahkan wajah ke kamera. Sistem akan mendeteksi secara otomatis.
+        {rantingKiosk
+          ? `Kiosk khusus Ranting ${rantingKiosk} — hanya mendeteksi anggota ranting ini`
+          : 'Arahkan wajah ke kamera. Sistem akan mendeteksi secara otomatis.'}
       </footer>
     </div>
   )

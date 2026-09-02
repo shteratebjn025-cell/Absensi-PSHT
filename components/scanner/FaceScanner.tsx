@@ -24,6 +24,11 @@ interface FaceScannerProps {
   onScanSuccess?: (scan: LastScan) => void
   /** Mode TV: tidak tampilkan overlay info panjang */
   compact?: boolean
+  /**
+   * Filter pencarian wajah hanya dalam ranting ini.
+   * Kosong/undefined = cari semua ranting (mode global).
+   */
+  rantingFilter?: string
 }
 
 export function FaceScanner({
@@ -31,6 +36,7 @@ export function FaceScanner({
   adminId = 'admin',
   onScanSuccess,
   compact = false,
+  rantingFilter = '',
 }: FaceScannerProps) {
   const webcamRef = useRef<Webcam>(null)
   const [scanState, setScanState] = useState<ScanState>('idle')
@@ -44,7 +50,11 @@ export function FaceScanner({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isScanningRef = useRef(false) // guard — cegah scan tumpuk
   const batasRef = useRef('07:30')    // ref agar doScan tidak perlu re-create setiap batas berubah
+  const rantingRef = useRef(rantingFilter) // ref agar doScan selalu pakai nilai ranting terbaru
   const supabase = createClient()
+
+  // Sync rantingRef setiap rantingFilter prop berubah
+  useEffect(() => { rantingRef.current = rantingFilter }, [rantingFilter])
 
   // ── Ambil batas_terlambat dari Supabase app_settings ─────────────────────
   // Ini agar konsisten di semua device (bukan localStorage per-device)
@@ -158,6 +168,7 @@ export function FaceScanner({
         query_embedding: embedding,
         match_threshold: 0.68,  // threshold lebih ketat untuk kurangi false positive
         match_count: 3,         // ambil top-3 untuk cek confidence gap
+        ranting_filter: rantingRef.current, // filter per ranting jika dikonfigurasi
       })
 
       if (error) throw error
@@ -320,7 +331,14 @@ export function FaceScanner({
       {/* Kontrol header */}
       {!compact && (
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Kamera Scanner</h2>
+          <div>
+            <h2 className="font-semibold text-gray-900">Kamera Scanner</h2>
+            {rantingFilter && (
+              <p className="text-xs text-red-700 font-medium mt-0.5">
+                Ranting: {rantingFilter}
+              </p>
+            )}
+          </div>
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault(); setIsAutoMode((v) => !v) }}

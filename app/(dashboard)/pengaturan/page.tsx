@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Key, Clock, Loader2 } from 'lucide-react'
+import { Save, Key, Clock, Loader2, MapPin } from 'lucide-react'
 
 export default function PengaturanPage() {
   const supabase = createClient()
@@ -15,17 +15,23 @@ export default function PengaturanPage() {
   const [passLoading, setPassLoading] = useState(false)
   const [passMsg, setPassMsg] = useState('')
 
-  // Jam batas terlambat — disimpan di Supabase agar konsisten di semua device/kiosk
+  // Jam batas terlambat
   const [batasJam, setBatasJam] = useState('07:30')
   const [jamLoading, setJamLoading] = useState(true)
   const [jamMsg, setJamMsg] = useState('')
+
+  // Ranting kiosk — filter pencarian wajah per ranting
+  const [rantingKiosk, setRantingKiosk] = useState('')
+  const [daftarRanting, setDaftarRanting] = useState<string[]>([])
+  const [rantingLoading, setRantingLoading] = useState(true)
+  const [rantingMsg, setRantingMsg] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
     })
 
-    // Ambil dari Supabase
+    // Ambil batas jam dari Supabase
     supabase
       .from('app_settings')
       .select('value')
@@ -35,11 +41,34 @@ export default function PengaturanPage() {
         if (!error && data?.value) {
           setBatasJam(data.value)
         } else {
-          // Fallback: cek localStorage lama lalu migrate
           const local = localStorage.getItem('batas_terlambat')
           if (local) setBatasJam(local)
         }
         setJamLoading(false)
+      })
+
+    // Ambil ranting_kiosk dari Supabase
+    supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'ranting_kiosk')
+      .maybeSingle()
+      .then(({ data }) => {
+        setRantingKiosk(data?.value ?? '')
+        setRantingLoading(false)
+      })
+
+    // Ambil daftar ranting yang ada di database anggota
+    supabase
+      .from('anggota')
+      .select('ranting')
+      .not('ranting', 'is', null)
+      .neq('ranting', '')
+      .then(({ data }) => {
+        const unik = [...new Set((data ?? []).map((a: any) => a.ranting as string))]
+          .filter(Boolean)
+          .sort()
+        setDaftarRanting(unik)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -47,25 +76,36 @@ export default function PengaturanPage() {
   const handleSaveJam = async () => {
     setJamLoading(true)
     setJamMsg('')
-
-    // Simpan ke localStorage sebagai fallback
     localStorage.setItem('batas_terlambat', batasJam)
-
-    // Simpan ke Supabase (upsert agar tidak error jika sudah ada)
     const { error } = await supabase
       .from('app_settings')
       .upsert({ key: 'batas_terlambat', value: batasJam }, { onConflict: 'key' })
-
     if (error) {
-      // Jika tabel belum ada, setidaknya localStorage sudah tersimpan
-      console.warn('app_settings upsert error:', error.message)
       setJamMsg('Tersimpan di perangkat ini. Jalankan SQL migrasi untuk sinkronisasi semua device.')
     } else {
       setJamMsg('Tersimpan! Semua device scanner akan pakai jam ini.')
     }
-
     setJamLoading(false)
     setTimeout(() => setJamMsg(''), 4000)
+  }
+
+  const handleSaveRanting = async () => {
+    setRantingLoading(true)
+    setRantingMsg('')
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'ranting_kiosk', value: rantingKiosk }, { onConflict: 'key' })
+    if (error) {
+      setRantingMsg('Gagal menyimpan: ' + error.message)
+    } else {
+      setRantingMsg(
+        rantingKiosk
+          ? `Tersimpan! Kiosk ini hanya akan mendeteksi anggota Ranting ${rantingKiosk}.`
+          : 'Tersimpan! Kiosk ini akan mendeteksi semua ranting.'
+      )
+    }
+    setRantingLoading(false)
+    setTimeout(() => setRantingMsg(''), 5000)
   }
 
   const handleChangePassword = async () => {
@@ -96,6 +136,71 @@ export default function PengaturanPage() {
         <h1 className="text-2xl font-bold text-gray-900">Pengaturan</h1>
         <p className="text-gray-500 text-sm mt-1">Konfigurasi sistem absensi</p>
       </div>
+
+      {/* Pengaturan ranting kiosk */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-red-700" />
+            Filter Ranting Kiosk
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-gray-600 mb-1">
+            Jika diisi, kiosk scanner ini hanya akan mencocokkan wajah anggota dari ranting yang dipilih.
+            Ini meningkatkan akurasi pengenalan wajah secara signifikan.
+          </p>
+          <p className="text-xs text-blue-600 mb-4">
+            ✦ Biarkan kosong jika kiosk ini digunakan untuk semua ranting.
+          </p>
+          <div className="flex gap-3 items-end flex-wrap">
+            {daftarRanting.length > 0 ? (
+              <div className="flex flex-col gap-1 flex-1 min-w-48">
+                <label className="text-sm font-medium text-gray-700">Ranting</label>
+                <select
+                  value={rantingKiosk}
+                  onChange={(e) => setRantingKiosk(e.target.value)}
+                  disabled={rantingLoading}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                  aria-label="Pilih ranting kiosk"
+                >
+                  <option value="">— Semua Ranting (tidak difilter) —</option>
+                  {daftarRanting.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <Input
+                label="Ranting"
+                value={rantingKiosk}
+                onChange={(e) => setRantingKiosk(e.target.value)}
+                placeholder="Kosong = semua ranting"
+                className="flex-1 min-w-48"
+                disabled={rantingLoading}
+              />
+            )}
+            <Button
+              onClick={handleSaveRanting}
+              loading={rantingLoading}
+              disabled={rantingLoading}
+            >
+              {rantingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Simpan
+            </Button>
+          </div>
+          {rantingMsg && (
+            <p className={`text-sm mt-2 ${rantingMsg.includes('Tersimpan') ? 'text-green-600' : 'text-red-600'}`}>
+              {rantingMsg}
+            </p>
+          )}
+          {daftarRanting.length === 0 && !rantingLoading && (
+            <p className="text-xs text-gray-400 mt-2">
+              Belum ada data ranting. Isi kolom ranting pada data anggota terlebih dahulu.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pengaturan jam */}
       <Card>
