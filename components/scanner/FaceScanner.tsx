@@ -42,6 +42,8 @@ export function FaceScanner({
   const [modelLoadMsg, setModelLoadMsg] = useState('')
   const [batasTerlambat, setBatasTerlambat] = useState('07:30') // cache dari Supabase
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isScanningRef = useRef(false) // guard — cegah scan tumpuk
+  const batasRef = useRef('07:30')    // ref agar doScan tidak perlu re-create setiap batas berubah
   const supabase = createClient()
 
   // ── Ambil batas_terlambat dari Supabase app_settings ─────────────────────
@@ -55,10 +57,10 @@ export function FaceScanner({
       .then(({ data, error }) => {
         if (!error && data?.value) {
           setBatasTerlambat(data.value)
+          batasRef.current = data.value
         } else {
-          // Fallback ke localStorage lama
           const local = localStorage.getItem('batas_terlambat')
-          if (local) setBatasTerlambat(local)
+          if (local) { setBatasTerlambat(local); batasRef.current = local }
         }
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,11 +132,12 @@ export function FaceScanner({
   }, [])
 
   const doScan = useCallback(async () => {
-    if (scanState === 'scanning') return
-
+    // Guard ganda: state + ref untuk cegah scan tumpuk
+    if (isScanningRef.current) return
     const video = webcamRef.current?.video
     if (!video || video.readyState !== 4) return
 
+    isScanningRef.current = true
     setScanState('scanning')
     setMessage('Mendeteksi wajah...')
 
@@ -144,6 +147,7 @@ export function FaceScanner({
       if (!embedding) {
         setScanState('not_found')
         setMessage('Wajah tidak terdeteksi. Pastikan wajah terlihat jelas.')
+        isScanningRef.current = false
         setTimeout(() => setScanState('idle'), 2000)
         return
       }
@@ -161,6 +165,7 @@ export function FaceScanner({
       if (!data || data.length === 0) {
         setScanState('not_found')
         setMessage('Wajah tidak dikenal. Hubungi admin.')
+        isScanningRef.current = false
         setTimeout(() => setScanState('idle'), 3000)
         return
       }
@@ -177,16 +182,15 @@ export function FaceScanner({
 
       if (existing) {
         setScanState('duplicate')
-        setMessage(
-          `${matched.nama} sudah absen hari ini pukul ${formatWaktu(existing.waktu_scan)}`
-        )
+        setMessage(`${matched.nama} sudah absen hari ini pukul ${formatWaktu(existing.waktu_scan)}`)
+        isScanningRef.current = false
         setTimeout(() => setScanState('idle'), 4000)
         return
       }
 
       const now = new Date()
       const jam = now.getHours() * 60 + now.getMinutes()
-      const [batasJam, batasMenit] = batasTerlambat.split(':').map(Number)
+      const [batasJam, batasMenit] = batasRef.current.split(':').map(Number)
       const batasLambat = batasJam * 60 + batasMenit
       const status = jam > batasLambat ? 'Terlambat' : 'Hadir'
 
@@ -214,28 +218,29 @@ export function FaceScanner({
       setScanState('success')
       setMessage(`${matched.nama} — ${status}`)
       onScanSuccess?.(scanResult)
-
+      isScanningRef.current = false
       setTimeout(() => setScanState('idle'), 4000)
     } catch (err) {
       console.error('Scan error:', err)
       setScanState('error')
       setMessage('Terjadi kesalahan. Coba lagi.')
+      isScanningRef.current = false
       setTimeout(() => setScanState('idle'), 3000)
     }
-  }, [scanState, adminId, lokasiKiosk, onScanSuccess, supabase])
+  }, [adminId, lokasiKiosk, onScanSuccess, supabase])
 
-  // Auto scan setiap 3 detik — lebih lambat dari 2s agar MediaPipe punya waktu proses
-  // terutama di HP low-end yang butuh lebih lama untuk inferensi
+  // Auto scan setiap 3 detik. Pakai isScanningRef (bukan scanState) sebagai guard
+  // agar interval tidak di-reset terus saat state berubah
   useEffect(() => {
     if (isAutoMode && camState === 'granted') {
       intervalRef.current = setInterval(() => {
-        if (scanState === 'idle') doScan()
+        if (!isScanningRef.current) doScan()
       }, 3000)
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isAutoMode, scanState, doScan, camState])
+  }, [isAutoMode, camState, doScan])
 
   const stateConfig: Record<
     ScanState,

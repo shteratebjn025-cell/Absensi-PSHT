@@ -11,7 +11,7 @@ const MODEL_CDN =
 const WASM_CDN =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
 
-// Ukuran standar untuk semua input — konsisten antara enroll dan scan
+// Ukuran canonical — konsisten antara enroll dan scan
 const CANONICAL_W = 640
 const CANONICAL_H = 480
 
@@ -24,41 +24,26 @@ export function setFaceLoadCallback(cb: LoadCallback | null) {
 
 async function createLandmarkerWithFallback(): Promise<FaceLandmarker> {
   onLoadProgress?.('Memuat model deteksi wajah...')
-
   const vision = await FilesetResolver.forVisionTasks(WASM_CDN)
 
   let modelPath = MODEL_CDN
   try {
     const res = await fetch(MODEL_PATH, { method: 'HEAD' })
-    if (res.ok) {
-      modelPath = MODEL_PATH
-      onLoadProgress?.('Memuat model lokal...')
-    }
-  } catch {
-    // model lokal tidak ada, pakai CDN
-  }
+    if (res.ok) { modelPath = MODEL_PATH; onLoadProgress?.('Memuat model lokal...') }
+  } catch { /* pakai CDN */ }
 
-  const options = {
-    baseOptions: {
-      modelAssetPath: modelPath,
-      delegate: 'GPU' as const,
-    },
-    outputFaceBlendshapes: false,
-    runningMode: 'IMAGE' as const,
-    numFaces: 1,
-  }
+  const base = { modelAssetPath: modelPath, delegate: 'GPU' as const }
+  const opts = { baseOptions: base, outputFaceBlendshapes: false, runningMode: 'IMAGE' as const, numFaces: 1 }
 
   try {
     onLoadProgress?.('Inisialisasi GPU...')
-    const lm = await FaceLandmarker.createFromOptions(vision, options)
+    const lm = await FaceLandmarker.createFromOptions(vision, opts)
     onLoadProgress?.(null as unknown as string)
     return lm
-  } catch (gpuErr) {
-    console.warn('GPU delegate gagal, mencoba CPU...', gpuErr)
+  } catch {
     onLoadProgress?.('Beralih ke CPU mode...')
     const lm = await FaceLandmarker.createFromOptions(vision, {
-      ...options,
-      baseOptions: { ...options.baseOptions, delegate: 'CPU' as const },
+      ...opts, baseOptions: { ...base, delegate: 'CPU' as const },
     })
     onLoadProgress?.(null as unknown as string)
     return lm
@@ -76,12 +61,8 @@ async function getLandmarker(): Promise<FaceLandmarker> {
 }
 
 /**
- * Konversi semua sumber ke canvas canonical 640×480 TANPA mirror.
- *
- * KUNCI KONSISTENSI:
- * - Webcam di-render mirrored di UI, tapi kita TIDAK mirror canvas sebelum detect.
- * - Semua sumber (video, image, canvas) di-normalize ke ukuran yang sama.
- * - Dengan begitu embedding saat enroll == embedding saat scan.
+ * Normalisasi semua sumber ke canvas 640×480.
+ * TIDAK di-mirror — konsisten untuk semua sumber.
  */
 function toCanonicalCanvas(
   source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
@@ -91,21 +72,24 @@ function toCanonicalCanvas(
   canvas.height = CANONICAL_H
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-
-  // Gambar langsung tanpa flip — konsisten untuk semua sumber
   ctx.drawImage(source, 0, 0, CANONICAL_W, CANONICAL_H)
   return canvas
 }
 
 /**
- * Ekstrak embedding wajah dari berbagai sumber.
- * Semua sumber di-normalize ke 640×480 sebelum diproses.
+ * Ekstrak embedding dari video/image/canvas.
+ * 
+ * Pipeline canonical:
+ * 1. Normalize ke 640×480
+ * 2. Detect landmark (478 titik)
+ * 3. Normalisasi posisi ke bounding box wajah (translasi + scale invariant)
+ * 4. Ambil X,Y saja (Z dihapus — terlalu sensitif terhadap jarak kamera)  
+ * 5. Downsample ke 128D + L2 normalize
  */
 export async function extractEmbedding(
   source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
 ): Promise<number[] | null> {
   try {
-    // Validasi video sudah siap
     if (source instanceof HTMLVideoElement) {
       if (source.readyState < 2 || source.videoWidth === 0) return null
     }
@@ -116,9 +100,7 @@ export async function extractEmbedding(
     const landmarker = await getLandmarker()
     const result = landmarker.detect(canvas)
 
-    if (!result.faceLandmarks || result.faceLandmarks.length === 0) {
-      return null
-    }
+    if (!result.faceLandmarks || result.faceLandmarks.length === 0) return null
 
     return buildEmbedding(result.faceLandmarks[0])
   } catch (err) {
@@ -128,18 +110,42 @@ export async function extractEmbedding(
 }
 
 /**
- * Bangun embedding 128D ternormalisasi dari landmark MediaPipe.
- * Hanya pakai koordinat X dan Y (bukan Z) — lebih stabil terhadap
- * variasi jarak kamera dan ekspresi wajah.
+ * Bangun embedding 128D yang stabil:
+ * 
+ * 1. NORMALISASI POSISI: Geser landmark ke pusat bounding box wajah
+ *    lalu scale agar lebar wajah = 1.0. Ini membuat embedding tidak
+ *    terpengaruh oleh posisi wajah di frame (kiri/kanan/atas/bawah)
+ *    maupun jarak ke kamera (dekat/jauh).
+ *
+ * 2. Hanya pakai X,Y — Z dihapus karena sensitif terhadap jarak.
+ *
+ * 3. Downsample 956 → 128D → L2 normalize.
  */
 function buildEmbedding(landmarks: Array<{ x: number; y: number; z: number }>): number[] {
-  // Pakai X,Y saja — Z sangat sensitif terhadap jarak ke kamera
-  // dan menyebabkan similarity rendah padahal orang sama
+  // Hitung bounding box wajah
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const lm of landmarks) {
+    if (lm.x < minX) minX = lm.x
+    if (lm.x > maxX) maxX = lm.x
+    if (lm.y < minY) minY = lm.y
+    if (lm.y > maxY) maxY = lm.y
+  }
+
+  const cx = (minX + maxX) / 2
+  const cy = (minY + maxY) / 2
+  const scaleX = maxX - minX || 1  // lebar wajah
+  const scaleY = maxY - minY || 1  // tinggi wajah
+  const scale = Math.max(scaleX, scaleY)  // uniform scale
+
+  // Normalisasi: geser ke pusat, scale ke [-0.5, 0.5]
   const raw: number[] = []
   for (const lm of landmarks) {
-    raw.push(lm.x, lm.y)
+    raw.push(
+      (lm.x - cx) / scale,
+      (lm.y - cy) / scale,
+    )
   }
-  // 478 landmark × 2 = 956 nilai → downsample ke 128D
+  // 478 × 2 = 956 → 128D
   return normalizeL2(downsampleTo128(raw))
 }
 
@@ -157,9 +163,9 @@ function downsampleTo128(arr: number[]): number[] {
 }
 
 function normalizeL2(vec: number[]): number[] {
-  const magnitude = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0))
-  if (magnitude === 0) return vec
-  return vec.map((v) => v / magnitude)
+  const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0))
+  if (mag === 0) return vec
+  return vec.map((v) => v / mag)
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

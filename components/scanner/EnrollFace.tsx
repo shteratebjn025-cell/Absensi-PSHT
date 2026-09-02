@@ -26,22 +26,25 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
   const supabase = createClient()
 
   /**
-   * Ambil frame langsung dari video element (bukan screenshot base64).
-   * Ini lebih konsisten dengan cara FaceScanner mengambil frame —
-   * keduanya sekarang melewati extractEmbedding() dengan sumber yang sama.
+   * Capture langsung dari video element dan langsung proses.
+   * Tidak lewat base64 — pipeline identik dengan FaceScanner saat scan.
    */
-  const capture = useCallback(() => {
+  const capture = useCallback(async () => {
     const video = webcamRef.current?.video
     if (!video) return
-    // Gambar frame video ke canvas untuk preview
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
-    const ctx = canvas.getContext('2d')
+
+    // Buat preview dari video (hanya untuk tampilan, bukan untuk proses)
+    const previewCanvas = document.createElement('canvas')
+    previewCanvas.width = video.videoWidth || 640
+    previewCanvas.height = video.videoHeight || 480
+    const ctx = previewCanvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0)
-    setCapturedImage(canvas.toDataURL('image/jpeg', 0.9))
-  }, [])
+    setCapturedImage(previewCanvas.toDataURL('image/jpeg', 0.85))
+
+    // Langsung proses dari video element — pipeline sama dengan scanner
+    await processImage(video)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const processImage = async (
     source: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement
