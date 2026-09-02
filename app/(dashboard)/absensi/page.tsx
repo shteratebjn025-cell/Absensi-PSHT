@@ -16,7 +16,7 @@ export default function AbsensiPage() {
   const fetchLogs = async () => {
     const { data } = await supabase
       .from('attendance_logs')
-      .select('*, anggota:anggota_id(nama, nomor_anggota, tingkatan, cabang)')
+      .select('*, anggota:anggota_id(nama, nomor_anggota, tingkatan, cabang, ranting)')
       .eq('tanggal', today)
       .order('waktu_scan', { ascending: false })
     setLogs((data as AbsensiLog[]) ?? [])
@@ -109,6 +109,7 @@ export default function AbsensiPage() {
                       </p>
                       <p className="text-xs text-gray-500">
                         {log.anggota?.nomor_anggota} · {log.anggota?.tingkatan}
+                        {(log.anggota as any)?.ranting ? ` · ${(log.anggota as any).ranting}` : ''}
                       </p>
                     </div>
                     <div className="text-right shrink-0">

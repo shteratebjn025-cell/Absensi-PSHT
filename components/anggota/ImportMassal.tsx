@@ -11,6 +11,7 @@ interface RowData {
   nama: string
   tingkatan: string
   cabang: string
+  ranting: string
 }
 
 interface ImportResult {
@@ -50,6 +51,7 @@ export function ImportMassal({ onDone }: ImportMassalProps) {
         nama: String(row['nama'] ?? row['Nama'] ?? row['Nama Lengkap'] ?? '').trim(),
         tingkatan: String(row['tingkatan'] ?? row['Tingkatan'] ?? '').trim(),
         cabang: String(row['cabang'] ?? row['Cabang'] ?? '').trim(),
+        ranting: String(row['ranting'] ?? row['Ranting'] ?? '').trim(),
       })).filter((r) => r.nomor_anggota && r.nama)
 
       setPreview(rows)
@@ -96,16 +98,18 @@ export function ImportMassal({ onDone }: ImportMassalProps) {
         nama: 'Contoh Nama Anggota',
         tingkatan: 'Muda',
         cabang: 'Bojonegoro Kota',
+        ranting: 'Ranting Tengah',
       },
       {
         nomor_anggota: 'BJN-002',
         nama: 'Contoh Anggota Dua',
         tingkatan: 'Warga',
         cabang: 'Bojonegoro Barat',
+        ranting: 'Ranting Barat',
       },
     ]
     const ws = XLSX.utils.json_to_sheet(template)
-    ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 25 }]
+    ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 25 }, { wch: 25 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
     XLSX.writeFile(wb, 'Template_Import_Anggota_PSHT.xlsx')
@@ -120,7 +124,7 @@ export function ImportMassal({ onDone }: ImportMassalProps) {
             Gunakan template Excel
           </p>
           <p className="text-xs text-blue-700 mt-0.5">
-            Kolom wajib: nomor_anggota, nama, tingkatan, cabang
+            Kolom wajib: nomor_anggota, nama — opsional: tingkatan, cabang, ranting
           </p>
         </div>
         <Button
@@ -176,6 +180,7 @@ export function ImportMassal({ onDone }: ImportMassalProps) {
                   <th className="px-3 py-2 text-left">Nama</th>
                   <th className="px-3 py-2 text-left">Tingkatan</th>
                   <th className="px-3 py-2 text-left">Cabang</th>
+                  <th className="px-3 py-2 text-left">Ranting</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -185,11 +190,12 @@ export function ImportMassal({ onDone }: ImportMassalProps) {
                     <td className="px-3 py-2">{row.nama}</td>
                     <td className="px-3 py-2 text-gray-600">{row.tingkatan}</td>
                     <td className="px-3 py-2 text-gray-600">{row.cabang}</td>
+                    <td className="px-3 py-2 text-gray-600">{row.ranting}</td>
                   </tr>
                 ))}
                 {preview.length > 100 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-2 text-center text-gray-500 text-xs">
+                    <td colSpan={5} className="px-3 py-2 text-center text-gray-500 text-xs">
                       ... dan {preview.length - 100} baris lainnya
                     </td>
                   </tr>

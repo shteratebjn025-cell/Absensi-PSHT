@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,8 @@ import {
   Pencil,
   Trash2,
   UserCheck,
+  Filter,
+  X,
 } from 'lucide-react'
 
 export default function AnggotaPage() {
@@ -24,6 +26,11 @@ export default function AnggotaPage() {
   const [anggota, setAnggota] = useState<Anggota[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+
+  // Filter
+  const [filterTingkatan, setFilterTingkatan] = useState('')
+  const [filterCabang, setFilterCabang] = useState('')
+  const [filterRanting, setFilterRanting] = useState('')
 
   // Modal states
   const [showImport, setShowImport] = useState(false)
@@ -38,6 +45,7 @@ export default function AnggotaPage() {
     nama: '',
     tingkatan: '',
     cabang: '',
+    ranting: '',
   })
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
@@ -57,17 +65,40 @@ export default function AnggotaPage() {
     fetchAnggota()
   }, [fetchAnggota])
 
-  const filtered = anggota.filter(
-    (a) =>
-      a.nama.toLowerCase().includes(search.toLowerCase()) ||
-      a.nomor_anggota.toLowerCase().includes(search.toLowerCase()) ||
-      a.tingkatan?.toLowerCase().includes(search.toLowerCase()) ||
-      a.cabang?.toLowerCase().includes(search.toLowerCase())
+  // Opsi unik untuk dropdown filter
+  const opsiTingkatan = useMemo(
+    () => [...new Set(anggota.map((a) => a.tingkatan).filter(Boolean))].sort(),
+    [anggota]
   )
+  const opsiCabang = useMemo(
+    () => [...new Set(anggota.map((a) => a.cabang).filter(Boolean))].sort(),
+    [anggota]
+  )
+  const opsiRanting = useMemo(
+    () => [...new Set(anggota.map((a) => a.ranting).filter(Boolean))].sort(),
+    [anggota]
+  )
+
+  const filtered = useMemo(
+    () =>
+      anggota.filter((a) => {
+        const matchSearch =
+          !search ||
+          a.nama.toLowerCase().includes(search.toLowerCase()) ||
+          a.nomor_anggota.toLowerCase().includes(search.toLowerCase())
+        const matchTingkatan = !filterTingkatan || a.tingkatan === filterTingkatan
+        const matchCabang = !filterCabang || a.cabang === filterCabang
+        const matchRanting = !filterRanting || a.ranting === filterRanting
+        return matchSearch && matchTingkatan && matchCabang && matchRanting
+      }),
+    [anggota, search, filterTingkatan, filterCabang, filterRanting]
+  )
+
+  const hasFilter = filterTingkatan || filterCabang || filterRanting || search
 
   const openTambah = () => {
     setIsEdit(false)
-    setForm({ nomor_anggota: '', nama: '', tingkatan: '', cabang: '' })
+    setForm({ nomor_anggota: '', nama: '', tingkatan: '', cabang: '', ranting: '' })
     setFormError('')
     setShowTambah(true)
   }
@@ -80,6 +111,7 @@ export default function AnggotaPage() {
       nama: a.nama,
       tingkatan: a.tingkatan,
       cabang: a.cabang,
+      ranting: a.ranting ?? '',
     })
     setFormError('')
     setShowTambah(true)
@@ -121,6 +153,13 @@ export default function AnggotaPage() {
     fetchAnggota()
   }
 
+  const resetFilter = () => {
+    setSearch('')
+    setFilterTingkatan('')
+    setFilterCabang('')
+    setFilterRanting('')
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -128,7 +167,10 @@ export default function AnggotaPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Data Anggota</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {anggota.length} anggota terdaftar ·{' '}
+            {filtered.length !== anggota.length
+              ? `${filtered.length} dari ${anggota.length} anggota`
+              : `${anggota.length} anggota terdaftar`}
+            {' · '}
             {anggota.filter((a) => a.face_embedding).length} sudah ada wajah
           </p>
         </div>
@@ -144,13 +186,60 @@ export default function AnggotaPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <Input
-        placeholder="Cari nama, nomor anggota, tingkatan..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-md"
-      />
+      {/* Search & Filter */}
+      <div className="flex flex-col gap-3">
+        <Input
+          placeholder="Cari nama atau nomor anggota..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+        <div className="flex flex-wrap gap-2 items-center">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <select
+            value={filterTingkatan}
+            onChange={(e) => setFilterTingkatan(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            aria-label="Filter tingkatan"
+          >
+            <option value="">Semua Tingkatan</option>
+            {opsiTingkatan.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            value={filterCabang}
+            onChange={(e) => setFilterCabang(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            aria-label="Filter cabang"
+          >
+            <option value="">Semua Cabang</option>
+            {opsiCabang.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select
+            value={filterRanting}
+            onChange={(e) => setFilterRanting(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            aria-label="Filter ranting"
+          >
+            <option value="">Semua Ranting</option>
+            {opsiRanting.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+          {hasFilter && (
+            <button
+              onClick={resetFilter}
+              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded-lg hover:bg-red-50"
+            >
+              <X className="h-3 w-3" />
+              Reset filter
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Tabel */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -162,6 +251,7 @@ export default function AnggotaPage() {
                 <th className="px-4 py-3 text-left hidden sm:table-cell">No. Anggota</th>
                 <th className="px-4 py-3 text-left hidden md:table-cell">Tingkatan</th>
                 <th className="px-4 py-3 text-left hidden lg:table-cell">Cabang</th>
+                <th className="px-4 py-3 text-left hidden xl:table-cell">Ranting</th>
                 <th className="px-4 py-3 text-left">Wajah</th>
                 <th className="px-4 py-3 text-right">Aksi</th>
               </tr>
@@ -169,14 +259,14 @@ export default function AnggotaPage() {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
                     Memuat data...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                    {search ? 'Tidak ada hasil pencarian.' : 'Belum ada anggota.'}
+                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                    {hasFilter ? 'Tidak ada anggota yang cocok dengan filter.' : 'Belum ada anggota.'}
                   </td>
                 </tr>
               ) : (
@@ -190,6 +280,7 @@ export default function AnggotaPage() {
                         <div>
                           <p className="font-medium text-gray-900">{a.nama}</p>
                           <p className="text-xs text-gray-500 sm:hidden">{a.nomor_anggota}</p>
+                          <p className="text-xs text-gray-400 md:hidden">{a.tingkatan}{a.ranting ? ` · ${a.ranting}` : ''}</p>
                         </div>
                       </div>
                     </td>
@@ -201,6 +292,9 @@ export default function AnggotaPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                       {a.cabang || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 hidden xl:table-cell">
+                      {a.ranting || '-'}
                     </td>
                     <td className="px-4 py-3">
                       {a.face_embedding ? (
@@ -293,7 +387,13 @@ export default function AnggotaPage() {
             label="Cabang"
             value={form.cabang}
             onChange={(e) => setForm({ ...form, cabang: e.target.value })}
-            placeholder="Nama cabang / rayon"
+            placeholder="Nama cabang"
+          />
+          <Input
+            label="Ranting"
+            value={form.ranting}
+            onChange={(e) => setForm({ ...form, ranting: e.target.value })}
+            placeholder="Nama ranting"
           />
           {formError && (
             <p className="text-sm text-red-600">{formError}</p>

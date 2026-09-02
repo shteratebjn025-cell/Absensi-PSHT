@@ -9,14 +9,15 @@ export function exportAbsensiToXLSX(
 ) {
   const rows = data.map((log, index) => ({
     No: index + 1,
+    'Tanggal': new Date(log.tanggal).toLocaleDateString('id-ID'),
     'Nomor Anggota': log.anggota?.nomor_anggota ?? '-',
     'Nama Anggota': log.anggota?.nama ?? '-',
     Tingkatan: log.anggota?.tingkatan ?? '-',
-    Cabang: log.anggota?.cabang ?? '-',
+    Cabang: (log.anggota as any)?.cabang ?? '-',
+    Ranting: (log.anggota as any)?.ranting ?? '-',
     Status: log.status,
     'Waktu Scan': formatWaktu(log.waktu_scan),
     'Lokasi Kiosk': log.lokasi_kiosk ?? '-',
-    'Di-scan oleh': log.scanned_by,
   }))
 
   const worksheet = XLSX.utils.json_to_sheet(rows)
@@ -24,13 +25,14 @@ export function exportAbsensiToXLSX(
   // Atur lebar kolom
   worksheet['!cols'] = [
     { wch: 5 },
+    { wch: 14 },
     { wch: 18 },
     { wch: 30 },
     { wch: 15 },
     { wch: 20 },
+    { wch: 20 },
     { wch: 12 },
     { wch: 14 },
-    { wch: 20 },
     { wch: 20 },
   ]
 
@@ -48,6 +50,7 @@ export function exportAnggotaToXLSX(data: any[], filename?: string) {
     'Nama Lengkap': a.nama,
     Tingkatan: a.tingkatan,
     Cabang: a.cabang,
+    Ranting: a.ranting,
     'Ada Wajah': a.face_embedding ? 'Ya' : 'Belum',
     'Tanggal Daftar': new Date(a.created_at).toLocaleDateString('id-ID'),
   }))
@@ -58,6 +61,7 @@ export function exportAnggotaToXLSX(data: any[], filename?: string) {
     { wch: 18 },
     { wch: 30 },
     { wch: 15 },
+    { wch: 20 },
     { wch: 20 },
     { wch: 12 },
     { wch: 18 },

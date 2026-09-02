@@ -15,6 +15,9 @@ export default async function DashboardPage() {
     { count: totalAnggota },
     { count: hadirHariIni },
     { count: terlambatHariIni },
+    { data: anggotaList },
+    { data: absensiHariIni },
+    { data: recentScans },
   ] = await Promise.all([
     supabase.from('anggota').select('*', { count: 'exact', head: true }),
     supabase
@@ -27,18 +30,53 @@ export default async function DashboardPage() {
       .select('*', { count: 'exact', head: true })
       .eq('tanggal', today)
       .eq('status', 'Terlambat'),
+    // Untuk breakdown per ranting/tingkatan
+    supabase
+      .from('anggota')
+      .select('id, tingkatan, cabang, ranting'),
+    // Absensi hari ini dengan info anggota
+    supabase
+      .from('attendance_logs')
+      .select('anggota_id')
+      .eq('tanggal', today),
+    // 10 scan terakhir
+    supabase
+      .from('attendance_logs')
+      .select('*, anggota:anggota_id(nama, nomor_anggota, tingkatan, ranting)')
+      .eq('tanggal', today)
+      .order('waktu_scan', { ascending: false })
+      .limit(10),
   ])
 
   const totalHadir = (hadirHariIni ?? 0) + (terlambatHariIni ?? 0)
   const belumAbsen = (totalAnggota ?? 0) - totalHadir
 
-  // Ambil 10 scan terakhir hari ini
-  const { data: recentScans } = await supabase
-    .from('attendance_logs')
-    .select('*, anggota:anggota_id(nama, nomor_anggota, tingkatan)')
-    .eq('tanggal', today)
-    .order('waktu_scan', { ascending: false })
-    .limit(10)
+  // Hitung breakdown per ranting
+  const sudahAbsenIds = new Set((absensiHariIni ?? []).map((a: any) => a.anggota_id))
+  const semuaAnggota = anggotaList ?? []
+
+  // Grup per ranting
+  const rantingMap = new Map<string, { total: number; hadir: number }>()
+  for (const a of semuaAnggota as any[]) {
+    const key = a.ranting || '(Belum diisi)'
+    if (!rantingMap.has(key)) rantingMap.set(key, { total: 0, hadir: 0 })
+    const cur = rantingMap.get(key)!
+    cur.total++
+    if (sudahAbsenIds.has(a.id)) cur.hadir++
+  }
+
+  // Grup per tingkatan
+  const tingkatanMap = new Map<string, { total: number; hadir: number }>()
+  for (const a of semuaAnggota as any[]) {
+    const key = a.tingkatan || '(Belum diisi)'
+    if (!tingkatanMap.has(key)) tingkatanMap.set(key, { total: 0, hadir: 0 })
+    const cur = tingkatanMap.get(key)!
+    cur.total++
+    if (sudahAbsenIds.has(a.id)) cur.hadir++
+  }
+
+  const rantingList = [...rantingMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  const tingkatanList = [...tingkatanMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 
   const stats = [
     {
@@ -126,9 +164,81 @@ export default async function DashboardPage() {
           <Users className="h-6 w-6 text-gray-600" />
           <div>
             <p className="font-semibold text-gray-900">Laporan Absensi</p>
-            <p className="text-xs text-gray-500">Export Excel</p>
+            <p className="text-xs text-gray-500">Riwayat & export Excel</p>
           </div>
         </Link>
+      </div>
+
+      {/* Breakdown per Ranting & Tingkatan */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Breakdown per Ranting */}
+        {rantingList.length > 0 && (
+          <Card>
+            <div className="px-6 py-4 border-b">
+              <h2 className="font-semibold text-gray-900">Kehadiran per Ranting</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Data hari ini</p>
+            </div>
+            <div className="divide-y">
+              {rantingList.map(([ranting, data]) => {
+                const pct = data.total > 0 ? Math.round((data.hadir / data.total) * 100) : 0
+                return (
+                  <div key={ranting} className="px-6 py-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-gray-800">{ranting}</span>
+                      <span className="text-xs text-gray-500">
+                        {data.hadir}/{data.total} hadir
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${
+                          pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">{pct}% hadir</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* Breakdown per Tingkatan */}
+        {tingkatanList.length > 0 && (
+          <Card>
+            <div className="px-6 py-4 border-b">
+              <h2 className="font-semibold text-gray-900">Kehadiran per Tingkatan</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Data hari ini</p>
+            </div>
+            <div className="divide-y">
+              {tingkatanList.map(([tingkatan, data]) => {
+                const pct = data.total > 0 ? Math.round((data.hadir / data.total) * 100) : 0
+                return (
+                  <div key={tingkatan} className="px-6 py-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-gray-800">{tingkatan}</span>
+                      <span className="text-xs text-gray-500">
+                        {data.hadir}/{data.total} hadir
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${
+                          pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">{pct}% hadir</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Scan terakhir */}
@@ -152,6 +262,7 @@ export default async function DashboardPage() {
                   </p>
                   <p className="text-xs text-gray-500">
                     No. {scan.anggota?.nomor_anggota} · {scan.anggota?.tingkatan}
+                    {scan.anggota?.ranting ? ` · ${scan.anggota.ranting}` : ''}
                   </p>
                 </div>
                 <div className="text-right shrink-0">

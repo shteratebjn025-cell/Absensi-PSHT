@@ -4,6 +4,7 @@ export type Anggota = {
   nama: string
   tingkatan: string
   cabang: string
+  ranting: string
   face_embedding: number[] | null
   photo_url: string | null
   created_at: string
