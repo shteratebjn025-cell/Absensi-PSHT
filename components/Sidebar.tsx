@@ -25,7 +25,9 @@ const navItems = [
   { href: '/absensi', label: 'Absensi', icon: ScanFace },
   { href: '/laporan', label: 'Laporan', icon: FileSpreadsheet },
   { href: '/pengaturan', label: 'Pengaturan', icon: Settings },
-]export function Sidebar() {
+]
+
+export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
