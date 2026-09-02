@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Key, Clock, Loader2, MapPin } from 'lucide-react'
+import { Save, Key, Clock, Loader2, MapPin, Copy, Check } from 'lucide-react'
 
 export default function PengaturanPage() {
   const supabase = createClient()
@@ -20,13 +20,15 @@ export default function PengaturanPage() {
   const [jamLoading, setJamLoading] = useState(true)
   const [jamMsg, setJamMsg] = useState('')
 
-  // Ranting kiosk — filter pencarian wajah per ranting
-  const [rantingKiosk, setRantingKiosk] = useState('')
+  // URL kiosk per ranting
   const [daftarRanting, setDaftarRanting] = useState<string[]>([])
-  const [rantingLoading, setRantingLoading] = useState(true)
-  const [rantingMsg, setRantingMsg] = useState('')
+  const [copiedRanting, setCopiedRanting] = useState<string | null>(null)
+  const [baseUrl, setBaseUrl] = useState('')
 
   useEffect(() => {
+    // Ambil base URL dari window (agar benar di semua environment)
+    setBaseUrl(window.location.origin)
+
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
     })
@@ -47,18 +49,7 @@ export default function PengaturanPage() {
         setJamLoading(false)
       })
 
-    // Ambil ranting_kiosk dari Supabase
-    supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'ranting_kiosk')
-      .maybeSingle()
-      .then(({ data }) => {
-        setRantingKiosk(data?.value ?? '')
-        setRantingLoading(false)
-      })
-
-    // Ambil daftar ranting yang ada di database anggota
+    // Ambil daftar ranting dari database anggota
     supabase
       .from('anggota')
       .select('ranting')
@@ -72,6 +63,15 @@ export default function PengaturanPage() {
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const getScannerUrl = (ranting: string) =>
+    `${baseUrl}/scanner?ranting=${encodeURIComponent(ranting)}`
+
+  const handleCopyUrl = async (ranting: string) => {
+    await navigator.clipboard.writeText(getScannerUrl(ranting))
+    setCopiedRanting(ranting)
+    setTimeout(() => setCopiedRanting(null), 2000)
+  }
 
   const handleSaveJam = async () => {
     setJamLoading(true)
@@ -87,25 +87,6 @@ export default function PengaturanPage() {
     }
     setJamLoading(false)
     setTimeout(() => setJamMsg(''), 4000)
-  }
-
-  const handleSaveRanting = async () => {
-    setRantingLoading(true)
-    setRantingMsg('')
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert({ key: 'ranting_kiosk', value: rantingKiosk }, { onConflict: 'key' })
-    if (error) {
-      setRantingMsg('Gagal menyimpan: ' + error.message)
-    } else {
-      setRantingMsg(
-        rantingKiosk
-          ? `Tersimpan! Kiosk ini hanya akan mendeteksi anggota Ranting ${rantingKiosk}.`
-          : 'Tersimpan! Kiosk ini akan mendeteksi semua ranting.'
-      )
-    }
-    setRantingLoading(false)
-    setTimeout(() => setRantingMsg(''), 5000)
   }
 
   const handleChangePassword = async () => {
@@ -137,64 +118,67 @@ export default function PengaturanPage() {
         <p className="text-gray-500 text-sm mt-1">Konfigurasi sistem absensi</p>
       </div>
 
-      {/* Pengaturan ranting kiosk */}
+      {/* URL Kiosk Per Ranting */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-red-700" />
-            Filter Ranting Kiosk
+            URL Scanner Per Ranting
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-gray-600 mb-1">
-            Jika diisi, kiosk scanner ini hanya akan mencocokkan wajah anggota dari ranting yang dipilih.
-            Ini meningkatkan akurasi pengenalan wajah secara signifikan.
+            Setiap kiosk cukup bookmark URL yang berbeda — tidak perlu setting ulang di database.
+            Masing-masing device bisa punya ranting yang berbeda secara mandiri.
           </p>
           <p className="text-xs text-blue-600 mb-4">
-            ✦ Biarkan kosong jika kiosk ini digunakan untuk semua ranting.
+            ✦ Salin URL di bawah lalu buka/bookmark di device/HP kiosk yang sesuai.
           </p>
-          <div className="flex gap-3 items-end flex-wrap">
-            {daftarRanting.length > 0 ? (
-              <div className="flex flex-col gap-1 flex-1 min-w-48">
-                <label className="text-sm font-medium text-gray-700">Ranting</label>
-                <select
-                  value={rantingKiosk}
-                  onChange={(e) => setRantingKiosk(e.target.value)}
-                  disabled={rantingLoading}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                  aria-label="Pilih ranting kiosk"
-                >
-                  <option value="">— Semua Ranting (tidak difilter) —</option>
-                  {daftarRanting.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <Input
-                label="Ranting"
-                value={rantingKiosk}
-                onChange={(e) => setRantingKiosk(e.target.value)}
-                placeholder="Kosong = semua ranting"
-                className="flex-1 min-w-48"
-                disabled={rantingLoading}
-              />
-            )}
-            <Button
-              onClick={handleSaveRanting}
-              loading={rantingLoading}
-              disabled={rantingLoading}
-            >
-              {rantingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Simpan
-            </Button>
+
+          {/* URL untuk semua ranting */}
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border text-sm">
+              <span className="flex-1 font-mono text-gray-500 truncate text-xs">
+                {baseUrl}/scanner
+              </span>
+              <span className="text-xs text-gray-400 shrink-0">Semua ranting</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(`${baseUrl}/scanner`)}
+                className="p-1 hover:bg-gray-200 rounded shrink-0"
+                title="Salin URL"
+              >
+                <Copy className="h-3.5 w-3.5 text-gray-500" />
+              </button>
+            </div>
           </div>
-          {rantingMsg && (
-            <p className={`text-sm mt-2 ${rantingMsg.includes('Tersimpan') ? 'text-green-600' : 'text-red-600'}`}>
-              {rantingMsg}
-            </p>
-          )}
-          {daftarRanting.length === 0 && !rantingLoading && (
+
+          {/* URL per ranting */}
+          {daftarRanting.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {daftarRanting.map((ranting) => (
+                <div
+                  key={ranting}
+                  className="flex items-center gap-2 p-2.5 bg-red-50 rounded-lg border border-red-100 text-sm"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-800 text-xs">{ranting}</p>
+                    <p className="font-mono text-gray-400 text-xs truncate">
+                      {getScannerUrl(ranting)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleCopyUrl(ranting)}
+                    className="flex items-center gap-1 px-2 py-1 bg-red-700 hover:bg-red-800 text-white rounded text-xs shrink-0 transition-colors"
+                  >
+                    {copiedRanting === ranting
+                      ? <><Check className="h-3 w-3" /> Disalin</>
+                      : <><Copy className="h-3 w-3" /> Salin</>
+                    }
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
             <p className="text-xs text-gray-400 mt-2">
               Belum ada data ranting. Isi kolom ranting pada data anggota terlebih dahulu.
             </p>

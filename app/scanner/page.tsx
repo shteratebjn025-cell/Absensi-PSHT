@@ -1,28 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { FaceScanner } from '@/components/scanner/FaceScanner'
-import { createClient } from '@/lib/supabase/client'
 import { Monitor } from 'lucide-react'
 
-export default function ScannerPublikPage() {
-  const supabase = createClient()
-  const [rantingKiosk, setRantingKiosk] = useState<string>('')
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    // Baca ranting kiosk dari Supabase app_settings
-    supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'ranting_kiosk')
-      .maybeSingle()
-      .then(({ data }) => {
-        setRantingKiosk(data?.value ?? '')
-        setLoaded(true)
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+/**
+ * Ranting dibaca dari URL query param: /scanner?ranting=NamaRanting
+ *
+ * Setiap device/kiosk bisa punya ranting berbeda cukup dengan URL yang berbeda.
+ * Tidak perlu setting di database — bookmark URL yang sesuai di masing-masing device.
+ *
+ * Contoh:
+ *   /scanner                   → semua ranting (tidak difilter)
+ *   /scanner?ranting=Kendal    → hanya anggota Ranting Kendal
+ *   /scanner?ranting=Bojonegoro → hanya anggota Ranting Bojonegoro
+ */
+function ScannerContent() {
+  const searchParams = useSearchParams()
+  // Decode untuk handle nama ranting yang mengandung spasi/karakter khusus
+  const rantingKiosk = decodeURIComponent(searchParams.get('ranting') ?? '')
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
@@ -51,16 +48,14 @@ export default function ScannerPublikPage() {
         </a>
       </header>
 
-      {/* Scanner utama — tunggu settings loaded agar rantingFilter tidak berubah saat scan */}
+      {/* Scanner utama */}
       <main className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
-          {loaded && (
-            <FaceScanner
-              lokasiKiosk={rantingKiosk ? `Kiosk ${rantingKiosk}` : 'Kiosk Publik'}
-              adminId="kiosk-publik"
-              rantingFilter={rantingKiosk}
-            />
-          )}
+          <FaceScanner
+            lokasiKiosk={rantingKiosk ? `Kiosk ${rantingKiosk}` : 'Kiosk Publik'}
+            adminId="kiosk-publik"
+            rantingFilter={rantingKiosk}
+          />
         </div>
       </main>
 
@@ -70,5 +65,17 @@ export default function ScannerPublikPage() {
           : 'Arahkan wajah ke kamera. Sistem akan mendeteksi secara otomatis.'}
       </footer>
     </div>
+  )
+}
+
+export default function ScannerPublikPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-gray-500 text-sm">Memuat scanner...</div>
+      </div>
+    }>
+      <ScannerContent />
+    </Suspense>
   )
 }
