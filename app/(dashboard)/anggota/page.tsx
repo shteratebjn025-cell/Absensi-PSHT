@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Suspense, useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,14 @@ import {
 } from 'lucide-react'
 
 export default function AnggotaPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">Memuat...</div>}>
+      <AnggotaContent />
+    </Suspense>
+  )
+}
+
+function AnggotaContent() {
   const supabase = createClient()
   const router = useRouter()
   const searchParams = useSearchParams()

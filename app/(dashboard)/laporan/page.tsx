@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,14 @@ import { Download, Search, Filter, Calendar } from 'lucide-react'
 type ModeFilter = 'tanggal' | 'rentang'
 
 export default function LaporanPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">Memuat...</div>}>
+      <LaporanContent />
+    </Suspense>
+  )
+}
+
+function LaporanContent() {
   const supabase = createClient()
   const router = useRouter()
   const searchParams = useSearchParams()
