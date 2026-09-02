@@ -178,7 +178,7 @@ export function FaceScanner({
         .select('id, waktu_scan, status')
         .eq('anggota_id', matched.id)
         .eq('tanggal', today)
-        .single()
+        .maybeSingle() // null kalau belum absen, tidak lempar error 406
 
       if (existing) {
         setScanState('duplicate')
