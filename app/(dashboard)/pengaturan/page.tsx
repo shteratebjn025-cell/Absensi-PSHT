@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Save, Key, Clock } from 'lucide-react'
+import { Save, Key, Clock, Loader2 } from 'lucide-react'
 
 export default function PengaturanPage() {
   const supabase = createClient()
@@ -15,22 +15,57 @@ export default function PengaturanPage() {
   const [passLoading, setPassLoading] = useState(false)
   const [passMsg, setPassMsg] = useState('')
 
-  // Jam batas terlambat (disimpan di localStorage untuk simplisitas)
+  // Jam batas terlambat — disimpan di Supabase agar konsisten di semua device/kiosk
   const [batasJam, setBatasJam] = useState('07:30')
-  const [saved, setSaved] = useState(false)
+  const [jamLoading, setJamLoading] = useState(true)
+  const [jamMsg, setJamMsg] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
     })
-    const saved = localStorage.getItem('batas_terlambat')
-    if (saved) setBatasJam(saved)
-  }, [supabase])
 
-  const handleSaveJam = () => {
+    // Ambil dari Supabase
+    supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'batas_terlambat')
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data?.value) {
+          setBatasJam(data.value)
+        } else {
+          // Fallback: cek localStorage lama lalu migrate
+          const local = localStorage.getItem('batas_terlambat')
+          if (local) setBatasJam(local)
+        }
+        setJamLoading(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSaveJam = async () => {
+    setJamLoading(true)
+    setJamMsg('')
+
+    // Simpan ke localStorage sebagai fallback
     localStorage.setItem('batas_terlambat', batasJam)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+
+    // Simpan ke Supabase (upsert agar tidak error jika sudah ada)
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'batas_terlambat', value: batasJam }, { onConflict: 'key' })
+
+    if (error) {
+      // Jika tabel belum ada, setidaknya localStorage sudah tersimpan
+      console.warn('app_settings upsert error:', error.message)
+      setJamMsg('Tersimpan di perangkat ini. Jalankan SQL migrasi untuk sinkronisasi semua device.')
+    } else {
+      setJamMsg('Tersimpan! Semua device scanner akan pakai jam ini.')
+    }
+
+    setJamLoading(false)
+    setTimeout(() => setJamMsg(''), 4000)
   }
 
   const handleChangePassword = async () => {
@@ -52,6 +87,7 @@ export default function PengaturanPage() {
       setConfirmPassword('')
     }
     setPassLoading(false)
+    setTimeout(() => setPassMsg(''), 4000)
   }
 
   return (
@@ -70,8 +106,11 @@ export default function PengaturanPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-gray-600 mb-1">
             Anggota yang absen setelah jam ini akan ditandai sebagai &quot;Terlambat&quot;.
+          </p>
+          <p className="text-xs text-blue-600 mb-4">
+            ✦ Pengaturan ini berlaku di semua kiosk dan device scanner secara otomatis.
           </p>
           <div className="flex gap-3 items-end">
             <Input
@@ -80,12 +119,22 @@ export default function PengaturanPage() {
               value={batasJam}
               onChange={(e) => setBatasJam(e.target.value)}
               className="max-w-xs"
+              disabled={jamLoading}
             />
-            <Button onClick={handleSaveJam} variant={saved ? 'secondary' : 'default'}>
-              <Save className="h-4 w-4" />
-              {saved ? 'Tersimpan!' : 'Simpan'}
+            <Button
+              onClick={handleSaveJam}
+              loading={jamLoading}
+              disabled={jamLoading}
+            >
+              {jamLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Simpan
             </Button>
           </div>
+          {jamMsg && (
+            <p className={`text-sm mt-2 ${jamMsg.includes('Tersimpan!') ? 'text-green-600' : 'text-yellow-600'}`}>
+              {jamMsg}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -117,11 +166,7 @@ export default function PengaturanPage() {
               placeholder="Ulangi password baru"
             />
             {passMsg && (
-              <p
-                className={`text-sm ${
-                  passMsg.includes('berhasil') ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
+              <p className={`text-sm ${passMsg.includes('berhasil') ? 'text-green-600' : 'text-red-600'}`}>
                 {passMsg}
               </p>
             )}

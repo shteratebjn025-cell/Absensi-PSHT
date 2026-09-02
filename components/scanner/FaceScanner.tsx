@@ -40,8 +40,29 @@ export function FaceScanner({
   const [camState, setCamState] = useState<CamState>('loading')
   const [camError, setCamError] = useState('')
   const [modelLoadMsg, setModelLoadMsg] = useState('')
+  const [batasTerlambat, setBatasTerlambat] = useState('07:30') // cache dari Supabase
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const supabase = createClient()
+
+  // ── Ambil batas_terlambat dari Supabase app_settings ─────────────────────
+  // Ini agar konsisten di semua device (bukan localStorage per-device)
+  useEffect(() => {
+    supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'batas_terlambat')
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data?.value) {
+          setBatasTerlambat(data.value)
+        } else {
+          // Fallback ke localStorage lama
+          const local = localStorage.getItem('batas_terlambat')
+          if (local) setBatasTerlambat(local)
+        }
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Cek HTTPS (wajib untuk kamera di mobile) ──────────────────────────────
   useEffect(() => {
@@ -131,7 +152,7 @@ export function FaceScanner({
 
       const { data, error } = await supabase.rpc('match_face', {
         query_embedding: embedding,
-        match_threshold: 0.75,
+        match_threshold: 0.60,  // turun dari 0.75 → lebih toleran terhadap variasi pencahayaan & sudut
         match_count: 1,
       })
 
@@ -165,8 +186,7 @@ export function FaceScanner({
 
       const now = new Date()
       const jam = now.getHours() * 60 + now.getMinutes()
-      const batasStr = localStorage.getItem('batas_terlambat') ?? '07:30'
-      const [batasJam, batasMenit] = batasStr.split(':').map(Number)
+      const [batasJam, batasMenit] = batasTerlambat.split(':').map(Number)
       const batasLambat = batasJam * 60 + batasMenit
       const status = jam > batasLambat ? 'Terlambat' : 'Hadir'
 
@@ -204,12 +224,13 @@ export function FaceScanner({
     }
   }, [scanState, adminId, lokasiKiosk, onScanSuccess, supabase])
 
-  // Auto scan setiap 2 detik
+  // Auto scan setiap 3 detik — lebih lambat dari 2s agar MediaPipe punya waktu proses
+  // terutama di HP low-end yang butuh lebih lama untuk inferensi
   useEffect(() => {
     if (isAutoMode && camState === 'granted') {
       intervalRef.current = setInterval(() => {
         if (scanState === 'idle') doScan()
-      }, 2000)
+      }, 3000)
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

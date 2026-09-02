@@ -107,13 +107,16 @@ export async function extractEmbedding(
       const video = source
       if (video.readyState < 2 || video.videoWidth === 0) return null
 
-      // Gambar frame video ke canvas
+      // Resize ke 640×480 — ukuran optimal untuk MediaPipe
+      // Resolusi lebih tinggi tidak menambah akurasi tapi memperlambat proses
+      const TARGET_W = 640
+      const TARGET_H = 480
       const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
+      canvas.width = TARGET_W
+      canvas.height = TARGET_H
       const ctx = canvas.getContext('2d')
       if (!ctx) return null
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      ctx.drawImage(video, 0, 0, TARGET_W, TARGET_H)
       detectSource = canvas
     } else {
       detectSource = source
