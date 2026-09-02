@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,14 +24,17 @@ import {
 
 export default function AnggotaPage() {
   const supabase = createClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [anggota, setAnggota] = useState<Anggota[]>([])
-  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
-  // Filter
-  const [filterTingkatan, setFilterTingkatan] = useState('')
-  const [filterCabang, setFilterCabang] = useState('')
-  const [filterRanting, setFilterRanting] = useState('')
+  // Filter — baca dari URL, fallback ke ''
+  const search = searchParams.get('q') ?? ''
+  const filterTingkatan = searchParams.get('tingkatan') ?? ''
+  const filterCabang = searchParams.get('cabang') ?? ''
+  const filterRanting = searchParams.get('ranting') ?? ''
 
   // Modal states
   const [showImport, setShowImport] = useState(false)
@@ -50,6 +54,20 @@ export default function AnggotaPage() {
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
   const [isEdit, setIsEdit] = useState(false)
+
+  // Helper: update URL params tanpa reload
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (value) {
+        params.set(key, value)
+      } else {
+        params.delete(key)
+      }
+      router.replace(`?${params.toString()}`, { scroll: false })
+    },
+    [router, searchParams]
+  )
 
   const fetchAnggota = useCallback(async () => {
     setLoading(true)
@@ -131,17 +149,11 @@ export default function AnggotaPage() {
         .update(form)
         .eq('id', selectedAnggota.id)
       if (error) setFormError(error.message)
-      else {
-        setShowTambah(false)
-        fetchAnggota()
-      }
+      else { setShowTambah(false); fetchAnggota() }
     } else {
       const { error } = await supabase.from('anggota').insert(form)
       if (error) setFormError(error.message)
-      else {
-        setShowTambah(false)
-        fetchAnggota()
-      }
+      else { setShowTambah(false); fetchAnggota() }
     }
     setFormLoading(false)
   }
@@ -154,10 +166,7 @@ export default function AnggotaPage() {
   }
 
   const resetFilter = () => {
-    setSearch('')
-    setFilterTingkatan('')
-    setFilterCabang('')
-    setFilterRanting('')
+    router.replace('?', { scroll: false })
   }
 
   return (
@@ -188,17 +197,22 @@ export default function AnggotaPage() {
 
       {/* Search & Filter */}
       <div className="flex flex-col gap-3">
-        <Input
-          placeholder="Cari nama atau nomor anggota..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Cari nama atau nomor anggota..."
+            value={search}
+            onChange={(e) => setParam('q', e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            aria-label="Cari anggota"
+          />
+        </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Filter className="h-4 w-4 text-gray-400" />
           <select
             value={filterTingkatan}
-            onChange={(e) => setFilterTingkatan(e.target.value)}
+            onChange={(e) => setParam('tingkatan', e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter tingkatan"
           >
@@ -209,7 +223,7 @@ export default function AnggotaPage() {
           </select>
           <select
             value={filterCabang}
-            onChange={(e) => setFilterCabang(e.target.value)}
+            onChange={(e) => setParam('cabang', e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter cabang"
           >
@@ -220,7 +234,7 @@ export default function AnggotaPage() {
           </select>
           <select
             value={filterRanting}
-            onChange={(e) => setFilterRanting(e.target.value)}
+            onChange={(e) => setParam('ranting', e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter ranting"
           >
@@ -280,7 +294,9 @@ export default function AnggotaPage() {
                         <div>
                           <p className="font-medium text-gray-900">{a.nama}</p>
                           <p className="text-xs text-gray-500 sm:hidden">{a.nomor_anggota}</p>
-                          <p className="text-xs text-gray-400 md:hidden">{a.tingkatan}{a.ranting ? ` · ${a.ranting}` : ''}</p>
+                          <p className="text-xs text-gray-400 md:hidden">
+                            {a.tingkatan}{a.ranting ? ` · ${a.ranting}` : ''}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -309,10 +325,7 @@ export default function AnggotaPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => {
-                            setSelectedAnggota(a)
-                            setShowEnroll(true)
-                          }}
+                          onClick={() => { setSelectedAnggota(a); setShowEnroll(true) }}
                           title="Daftarkan wajah"
                           className="p-1.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-700 transition-colors"
                           aria-label={`Daftarkan wajah ${a.nama}`}
@@ -328,10 +341,7 @@ export default function AnggotaPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => {
-                            setSelectedAnggota(a)
-                            setShowHapus(true)
-                          }}
+                          onClick={() => { setSelectedAnggota(a); setShowHapus(true) }}
                           title="Hapus"
                           className="p-1.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-700 transition-colors"
                           aria-label={`Hapus ${a.nama}`}
@@ -349,21 +359,12 @@ export default function AnggotaPage() {
       </div>
 
       {/* Modal Import Massal */}
-      <Modal
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        title="Import Massal Anggota"
-        size="lg"
-      >
+      <Modal open={showImport} onClose={() => setShowImport(false)} title="Import Massal Anggota" size="lg">
         <ImportMassal onDone={() => { setShowImport(false); fetchAnggota() }} />
       </Modal>
 
       {/* Modal Tambah/Edit */}
-      <Modal
-        open={showTambah}
-        onClose={() => setShowTambah(false)}
-        title={isEdit ? 'Edit Anggota' : 'Tambah Anggota Baru'}
-      >
+      <Modal open={showTambah} onClose={() => setShowTambah(false)} title={isEdit ? 'Edit Anggota' : 'Tambah Anggota Baru'}>
         <div className="flex flex-col gap-4">
           <Input
             label="Nomor Anggota"
@@ -395,13 +396,9 @@ export default function AnggotaPage() {
             onChange={(e) => setForm({ ...form, ranting: e.target.value })}
             placeholder="Nama ranting"
           />
-          {formError && (
-            <p className="text-sm text-red-600">{formError}</p>
-          )}
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowTambah(false)} className="flex-1">
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setShowTambah(false)} className="flex-1">Batal</Button>
             <Button onClick={handleSimpan} loading={formLoading} className="flex-1">
               {isEdit ? 'Simpan Perubahan' : 'Tambah Anggota'}
             </Button>
@@ -410,20 +407,13 @@ export default function AnggotaPage() {
       </Modal>
 
       {/* Modal Enroll Wajah */}
-      <Modal
-        open={showEnroll}
-        onClose={() => setShowEnroll(false)}
-        title="Daftarkan Wajah"
-        size="lg"
-      >
+      <Modal open={showEnroll} onClose={() => setShowEnroll(false)} title="Daftarkan Wajah" size="lg">
         {selectedAnggota && (
           <EnrollFace
             anggota={selectedAnggota}
             onSuccess={(updated) => {
               setShowEnroll(false)
-              setAnggota((prev) =>
-                prev.map((a) => (a.id === updated.id ? updated : a))
-              )
+              setAnggota((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
             }}
             onCancel={() => setShowEnroll(false)}
           />
@@ -431,25 +421,14 @@ export default function AnggotaPage() {
       </Modal>
 
       {/* Modal Konfirmasi Hapus */}
-      <Modal
-        open={showHapus}
-        onClose={() => setShowHapus(false)}
-        title="Hapus Anggota"
-        size="sm"
-      >
+      <Modal open={showHapus} onClose={() => setShowHapus(false)} title="Hapus Anggota" size="sm">
         <div className="flex flex-col gap-4">
           <p className="text-gray-700">
-            Yakin ingin menghapus{' '}
-            <strong>{selectedAnggota?.nama}</strong>? Data absensi terkait juga
-            akan terhapus.
+            Yakin ingin menghapus <strong>{selectedAnggota?.nama}</strong>? Data absensi terkait juga akan terhapus.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowHapus(false)} className="flex-1">
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleHapus} className="flex-1">
-              Hapus
-            </Button>
+            <Button variant="outline" onClick={() => setShowHapus(false)} className="flex-1">Batal</Button>
+            <Button variant="destructive" onClick={handleHapus} className="flex-1">Hapus</Button>
           </div>
         </div>
       </Modal>

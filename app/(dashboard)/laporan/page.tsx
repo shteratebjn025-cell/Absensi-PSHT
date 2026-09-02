@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,25 +15,43 @@ type ModeFilter = 'tanggal' | 'rentang'
 
 export default function LaporanPage() {
   const supabase = createClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const today = getTanggalHariIni()
 
-  const [mode, setMode] = useState<ModeFilter>('tanggal')
-  const [tanggal, setTanggal] = useState(today)
-  const [tanggalDari, setTanggalDari] = useState(today)
-  const [tanggalSampai, setTanggalSampai] = useState(today)
-
-  const [filterStatus, setFilterStatus] = useState<string>('semua')
-  const [filterTingkatan, setFilterTingkatan] = useState('')
-  const [filterCabang, setFilterCabang] = useState('')
-  const [filterRanting, setFilterRanting] = useState('')
+  // Baca semua state dari URL
+  const mode = (searchParams.get('mode') as ModeFilter) ?? 'tanggal'
+  const tanggal = searchParams.get('tgl') ?? today
+  const tanggalDari = searchParams.get('dari') ?? today
+  const tanggalSampai = searchParams.get('sampai') ?? today
+  const filterStatus = searchParams.get('status') ?? 'semua'
+  const filterTingkatan = searchParams.get('tingkatan') ?? ''
+  const filterCabang = searchParams.get('cabang') ?? ''
+  const filterRanting = searchParams.get('ranting') ?? ''
+  const sudahCari = searchParams.get('cari') === '1'
 
   const [logs, setLogs] = useState<AbsensiLog[]>([])
   const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
 
-  const handleCari = async () => {
+  // Helper: update satu atau lebih URL params tanpa reload
+  const setParams = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams(searchParams.toString())
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value) {
+          params.set(key, value)
+        } else {
+          params.delete(key)
+        }
+      })
+      router.replace(`?${params.toString()}`, { scroll: false })
+    },
+    [router, searchParams]
+  )
+
+  const fetchLogs = useCallback(async () => {
+    if (!sudahCari) return
     setLoading(true)
-    setSearched(true)
 
     let query = supabase
       .from('attendance_logs')
@@ -52,25 +71,28 @@ export default function LaporanPage() {
     const { data } = await query
     let hasil = (data as AbsensiLog[]) ?? []
 
-    // Filter tingkatan, cabang, ranting (client-side karena relasi)
-    if (filterTingkatan) {
-      hasil = hasil.filter((l) => l.anggota?.tingkatan === filterTingkatan)
-    }
-    if (filterCabang) {
-      hasil = hasil.filter((l) => (l.anggota as any)?.cabang === filterCabang)
-    }
-    if (filterRanting) {
-      hasil = hasil.filter((l) => (l.anggota as any)?.ranting === filterRanting)
-    }
+    if (filterTingkatan) hasil = hasil.filter((l) => l.anggota?.tingkatan === filterTingkatan)
+    if (filterCabang) hasil = hasil.filter((l) => (l.anggota as any)?.cabang === filterCabang)
+    if (filterRanting) hasil = hasil.filter((l) => (l.anggota as any)?.ranting === filterRanting)
 
     setLogs(hasil)
     setLoading(false)
+  }, [sudahCari, mode, tanggal, tanggalDari, tanggalSampai, filterStatus, filterTingkatan, filterCabang, filterRanting, supabase])
+
+  // Jalankan fetch otomatis saat URL params berubah (termasuk saat refresh)
+  useEffect(() => {
+    fetchLogs()
+  }, [fetchLogs])
+
+  const handleCari = () => {
+    setParams({ cari: '1' })
+    // Jika sudahCari sudah '1', params tidak berubah → panggil manual
+    if (sudahCari) fetchLogs()
   }
 
   const handleExport = () => {
     if (logs.length === 0) return
-    const label =
-      mode === 'tanggal' ? tanggal : `${tanggalDari}_sd_${tanggalSampai}`
+    const label = mode === 'tanggal' ? tanggal : `${tanggalDari}_sd_${tanggalSampai}`
     exportAbsensiToXLSX(logs, label)
   }
 
@@ -78,7 +100,7 @@ export default function LaporanPage() {
   const terlambat = logs.filter((l) => l.status === 'Terlambat').length
   const izin = logs.filter((l) => l.status === 'Izin').length
 
-  // Ambil opsi filter unik dari hasil
+  // Opsi filter lanjutan dari hasil yang ada
   const opsiTingkatan = [...new Set(logs.map((l) => l.anggota?.tingkatan).filter(Boolean))].sort()
   const opsiCabang = [...new Set(logs.map((l) => (l.anggota as any)?.cabang).filter(Boolean))].sort()
   const opsiRanting = [...new Set(logs.map((l) => (l.anggota as any)?.ranting).filter(Boolean))].sort()
@@ -92,28 +114,24 @@ export default function LaporanPage() {
         </p>
       </div>
 
-      {/* Filter */}
+      {/* Filter panel */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-4">
 
         {/* Toggle mode */}
         <div className="flex gap-2">
           <button
-            onClick={() => setMode('tanggal')}
+            onClick={() => setParams({ mode: 'tanggal' })}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === 'tanggal'
-                ? 'bg-red-700 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              mode === 'tanggal' ? 'bg-red-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             <Calendar className="h-4 w-4" />
             Per Tanggal
           </button>
           <button
-            onClick={() => setMode('rentang')}
+            onClick={() => setParams({ mode: 'rentang' })}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === 'rentang'
-                ? 'bg-red-700 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              mode === 'rentang' ? 'bg-red-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             <Calendar className="h-4 w-4" />
@@ -129,7 +147,7 @@ export default function LaporanPage() {
                 label="Tanggal"
                 type="date"
                 value={tanggal}
-                onChange={(e) => setTanggal(e.target.value)}
+                onChange={(e) => setParams({ tgl: e.target.value })}
                 max={today}
               />
             </div>
@@ -140,7 +158,7 @@ export default function LaporanPage() {
                   label="Dari Tanggal"
                   type="date"
                   value={tanggalDari}
-                  onChange={(e) => setTanggalDari(e.target.value)}
+                  onChange={(e) => setParams({ dari: e.target.value })}
                   max={today}
                 />
               </div>
@@ -149,7 +167,7 @@ export default function LaporanPage() {
                   label="Sampai Tanggal"
                   type="date"
                   value={tanggalSampai}
-                  onChange={(e) => setTanggalSampai(e.target.value)}
+                  onChange={(e) => setParams({ sampai: e.target.value })}
                   max={today}
                 />
               </div>
@@ -160,7 +178,7 @@ export default function LaporanPage() {
             <label className="text-sm font-medium text-gray-700">Status</label>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => setParams({ status: e.target.value })}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               aria-label="Filter status"
             >
@@ -183,15 +201,15 @@ export default function LaporanPage() {
           )}
         </div>
 
-        {/* Filter lanjutan (muncul setelah ada hasil) */}
-        {searched && logs.length > 0 && (
+        {/* Filter lanjutan — muncul setelah ada hasil */}
+        {sudahCari && logs.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center pt-1 border-t">
             <Filter className="h-4 w-4 text-gray-400" />
             <span className="text-xs text-gray-500">Filter hasil:</span>
             {opsiTingkatan.length > 0 && (
               <select
                 value={filterTingkatan}
-                onChange={(e) => setFilterTingkatan(e.target.value)}
+                onChange={(e) => setParams({ tingkatan: e.target.value })}
                 className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
                 aria-label="Filter tingkatan"
               >
@@ -202,7 +220,7 @@ export default function LaporanPage() {
             {opsiCabang.length > 0 && (
               <select
                 value={filterCabang}
-                onChange={(e) => setFilterCabang(e.target.value)}
+                onChange={(e) => setParams({ cabang: e.target.value })}
                 className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
                 aria-label="Filter cabang"
               >
@@ -213,7 +231,7 @@ export default function LaporanPage() {
             {opsiRanting.length > 0 && (
               <select
                 value={filterRanting}
-                onChange={(e) => setFilterRanting(e.target.value)}
+                onChange={(e) => setParams({ ranting: e.target.value })}
                 className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
                 aria-label="Filter ranting"
               >
@@ -226,7 +244,7 @@ export default function LaporanPage() {
       </div>
 
       {/* Ringkasan */}
-      {searched && !loading && (
+      {sudahCari && !loading && (
         <div className="flex gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg border">
             <span className="text-sm text-gray-600">Total:</span>
@@ -248,7 +266,7 @@ export default function LaporanPage() {
       )}
 
       {/* Tabel hasil */}
-      {searched && (
+      {sudahCari && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-10 text-center text-gray-400">Memuat data...</div>
@@ -263,9 +281,7 @@ export default function LaporanPage() {
                 <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3 text-left">No</th>
-                    {mode === 'rentang' && (
-                      <th className="px-4 py-3 text-left">Tanggal</th>
-                    )}
+                    {mode === 'rentang' && <th className="px-4 py-3 text-left">Tanggal</th>}
                     <th className="px-4 py-3 text-left">Nama</th>
                     <th className="px-4 py-3 text-left hidden sm:table-cell">No. Anggota</th>
                     <th className="px-4 py-3 text-left hidden md:table-cell">Tingkatan</th>
@@ -282,15 +298,11 @@ export default function LaporanPage() {
                       {mode === 'rentang' && (
                         <td className="px-4 py-3 text-gray-500 text-xs font-mono">
                           {new Date(log.tanggal).toLocaleDateString('id-ID', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
+                            day: '2-digit', month: 'short', year: 'numeric',
                           })}
                         </td>
                       )}
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {log.anggota?.nama ?? '-'}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-900">{log.anggota?.nama ?? '-'}</td>
                       <td className="px-4 py-3 text-gray-500 font-mono text-xs hidden sm:table-cell">
                         {log.anggota?.nomor_anggota ?? '-'}
                       </td>
@@ -306,19 +318,15 @@ export default function LaporanPage() {
                       <td className="px-4 py-3">
                         <Badge
                           variant={
-                            log.status === 'Hadir'
-                              ? 'green'
-                              : log.status === 'Terlambat'
-                              ? 'yellow'
+                            log.status === 'Hadir' ? 'green'
+                              : log.status === 'Terlambat' ? 'yellow'
                               : 'blue'
                           }
                         >
                           {log.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {formatWaktu(log.waktu_scan)}
-                      </td>
+                      <td className="px-4 py-3 text-gray-500">{formatWaktu(log.waktu_scan)}</td>
                     </tr>
                   ))}
                 </tbody>
