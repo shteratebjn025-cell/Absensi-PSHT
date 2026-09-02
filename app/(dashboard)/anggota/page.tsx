@@ -212,7 +212,7 @@ function AnggotaContent() {
             placeholder="Cari nama atau nomor anggota..."
             value={search}
             onChange={(e) => setParam('q', e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Cari anggota"
           />
         </div>
@@ -221,7 +221,7 @@ function AnggotaContent() {
           <select
             value={filterTingkatan}
             onChange={(e) => setParam('tingkatan', e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter tingkatan"
           >
             <option value="">Semua Tingkatan</option>
@@ -232,7 +232,7 @@ function AnggotaContent() {
           <select
             value={filterCabang}
             onChange={(e) => setParam('cabang', e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter cabang"
           >
             <option value="">Semua Cabang</option>
@@ -243,7 +243,7 @@ function AnggotaContent() {
           <select
             value={filterRanting}
             onChange={(e) => setParam('ranting', e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
             aria-label="Filter ranting"
           >
             <option value="">Semua Ranting</option>

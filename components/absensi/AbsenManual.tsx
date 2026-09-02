@@ -130,7 +130,7 @@ export function AbsenManual({ rantingFilter = '', onSuccess }: AbsenManualProps)
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Ketik nama atau nomor anggota..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
         />
         {searching && (
           <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin" />

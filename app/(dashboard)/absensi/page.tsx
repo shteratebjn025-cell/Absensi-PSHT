@@ -141,7 +141,7 @@ export default function AbsensiPage() {
             <select
               value={rantingFilter}
               onChange={(e) => handleGantiRanting(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+              className="rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               aria-label="Filter ranting scanner"
             >
               <option value="">Semua Ranting</option>
