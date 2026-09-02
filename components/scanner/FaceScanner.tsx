@@ -108,7 +108,7 @@ export function FaceScanner({
     }
   }, [])
 
-  // ── Pasang callback loading model MediaPipe ────────────────────────────────
+  // ── Pasang callback loading model face-api.js ────────────────────────────
   useEffect(() => {
     setFaceLoadCallback((msg) => setModelLoadMsg(msg ?? ''))
     return () => setFaceLoadCallback(null)
@@ -166,8 +166,8 @@ export function FaceScanner({
 
       const { data, error } = await supabase.rpc('match_face', {
         query_embedding: embedding,
-        match_threshold: 0.60,  // ambil kandidat dengan similarity > 0.60
-        match_count: 1,         // cukup ambil 1 terbaik, tidak perlu gap check
+        match_threshold: 0.50,  // face-api.js descriptor lebih diskriminatif
+        match_count: 1,
         ranting_filter: rantingRef.current,
       })
 
@@ -183,8 +183,10 @@ export function FaceScanner({
 
       const matched = data[0]
 
-      // Tolak jika similarity di bawah batas yang cukup yakin
-      if (matched.similarity < 0.68) {
+      // face-api.js: cosine similarity >= 0.55 sudah cukup akurat
+      // (euclidean < 0.6 = sama orang, cosine equivalent ~0.82+)
+      // tapi mulai konservatif dulu di 0.55, bisa disesuaikan
+      if (matched.similarity < 0.55) {
         setScanState('not_found')
         setMessage('Wajah tidak dikenal. Hubungi admin.')
         isScanningRef.current = false
@@ -353,7 +355,7 @@ export function FaceScanner({
         </div>
       )}
 
-      {/* Loading model MediaPipe */}
+      {/* Loading model face-api.js */}
       {modelLoadMsg && (
         <div className="flex items-center gap-2 px-3 py-2 bg-yellow-900/30 border border-yellow-700/50 rounded-xl">
           <Loader2 className="h-4 w-4 text-yellow-400 animate-spin shrink-0" />

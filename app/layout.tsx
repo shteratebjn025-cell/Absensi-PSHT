@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { MediaPipeSuppressor } from '@/components/MediaPipeSuppressor'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -25,7 +24,6 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body className={inter.className}>
-        <MediaPipeSuppressor />
         {children}
       </body>
     </html>
