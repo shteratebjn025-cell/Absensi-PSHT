@@ -3,10 +3,54 @@ import { getTanggalHariIni, formatTanggal } from '@/lib/utils'
 import { Users, UserCheck, Clock, UserX, ScanFace } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import Link from 'next/link'
+import { Suspense } from 'react'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DashboardPage() {
+// Skeleton untuk stats cards agar halaman langsung tampil
+function StatsSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+        <div className="h-4 w-48 bg-gray-100 rounded animate-pulse mt-2" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gray-200 animate-pulse" />
+              <div className="flex flex-col gap-2">
+                <div className="h-7 w-12 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+        ))}
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="h-5 w-40 bg-gray-200 rounded animate-pulse mb-4" />
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="flex items-center gap-3 py-3 border-b last:border-0">
+            <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse shrink-0" />
+            <div className="flex-1 flex flex-col gap-1.5">
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              <div className="h-3 w-48 bg-gray-100 rounded animate-pulse" />
+            </div>
+            <div className="w-16 h-6 bg-gray-100 rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+async function DashboardData() {
   const supabase = await createClient()
   const today = getTanggalHariIni()
 
@@ -30,16 +74,13 @@ export default async function DashboardPage() {
       .select('*', { count: 'exact', head: true })
       .eq('tanggal', today)
       .eq('status', 'Terlambat'),
-    // Untuk breakdown per ranting/tingkatan
     supabase
       .from('anggota')
       .select('id, tingkatan, cabang, ranting'),
-    // Absensi hari ini dengan info anggota
     supabase
       .from('attendance_logs')
       .select('anggota_id')
       .eq('tanggal', today),
-    // 10 scan terakhir
     supabase
       .from('attendance_logs')
       .select('*, anggota:anggota_id(nama, nomor_anggota, tingkatan, ranting)')
@@ -51,11 +92,9 @@ export default async function DashboardPage() {
   const totalHadir = (hadirHariIni ?? 0) + (terlambatHariIni ?? 0)
   const belumAbsen = (totalAnggota ?? 0) - totalHadir
 
-  // Hitung breakdown per ranting
   const sudahAbsenIds = new Set((absensiHariIni ?? []).map((a: any) => a.anggota_id))
   const semuaAnggota = anggotaList ?? []
 
-  // Grup per ranting
   const rantingMap = new Map<string, { total: number; hadir: number }>()
   for (const a of semuaAnggota as any[]) {
     const key = a.ranting || '(Belum diisi)'
@@ -65,7 +104,6 @@ export default async function DashboardPage() {
     if (sudahAbsenIds.has(a.id)) cur.hadir++
   }
 
-  // Grup per tingkatan
   const tingkatanMap = new Map<string, { total: number; hadir: number }>()
   for (const a of semuaAnggota as any[]) {
     const key = a.tingkatan || '(Belum diisi)'
@@ -79,44 +117,14 @@ export default async function DashboardPage() {
   const tingkatanList = [...tingkatanMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 
   const stats = [
-    {
-      label: 'Total Anggota',
-      value: totalAnggota ?? 0,
-      icon: Users,
-      color: 'bg-blue-500',
-      bg: 'bg-blue-50',
-    },
-    {
-      label: 'Hadir Hari Ini',
-      value: totalHadir,
-      icon: UserCheck,
-      color: 'bg-green-500',
-      bg: 'bg-green-50',
-    },
-    {
-      label: 'Terlambat',
-      value: terlambatHariIni ?? 0,
-      icon: Clock,
-      color: 'bg-yellow-500',
-      bg: 'bg-yellow-50',
-    },
-    {
-      label: 'Belum Absen',
-      value: belumAbsen > 0 ? belumAbsen : 0,
-      icon: UserX,
-      color: 'bg-red-500',
-      bg: 'bg-red-50',
-    },
+    { label: 'Total Anggota', value: totalAnggota ?? 0, icon: Users, color: 'bg-blue-500', bg: 'bg-blue-50' },
+    { label: 'Hadir Hari Ini', value: totalHadir, icon: UserCheck, color: 'bg-green-500', bg: 'bg-green-50' },
+    { label: 'Terlambat', value: terlambatHariIni ?? 0, icon: Clock, color: 'bg-yellow-500', bg: 'bg-yellow-50' },
+    { label: 'Belum Absen', value: belumAbsen > 0 ? belumAbsen : 0, icon: UserX, color: 'bg-red-500', bg: 'bg-red-50' },
   ]
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">{formatTanggal(today)}</p>
-      </div>
-
+    <>
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(({ label, value, icon: Icon, color, bg }) => (
@@ -171,8 +179,6 @@ export default async function DashboardPage() {
 
       {/* Breakdown per Ranting & Tingkatan */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Breakdown per Ranting */}
         {rantingList.length > 0 && (
           <Card>
             <div className="px-6 py-4 border-b">
@@ -186,15 +192,11 @@ export default async function DashboardPage() {
                   <div key={ranting} className="px-6 py-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-medium text-gray-800">{ranting}</span>
-                      <span className="text-xs text-gray-500">
-                        {data.hadir}/{data.total} hadir
-                      </span>
+                      <span className="text-xs text-gray-500">{data.hadir}/{data.total} hadir</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
                       <div
-                        className={`h-1.5 rounded-full transition-all ${
-                          pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
+                        className={`h-1.5 rounded-full transition-all ${pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -206,7 +208,6 @@ export default async function DashboardPage() {
           </Card>
         )}
 
-        {/* Breakdown per Tingkatan */}
         {tingkatanList.length > 0 && (
           <Card>
             <div className="px-6 py-4 border-b">
@@ -220,15 +221,11 @@ export default async function DashboardPage() {
                   <div key={tingkatan} className="px-6 py-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-medium text-gray-800">{tingkatan}</span>
-                      <span className="text-xs text-gray-500">
-                        {data.hadir}/{data.total} hadir
-                      </span>
+                      <span className="text-xs text-gray-500">{data.hadir}/{data.total} hadir</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
                       <div
-                        className={`h-1.5 rounded-full transition-all ${
-                          pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
+                        className={`h-1.5 rounded-full transition-all ${pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -257,31 +254,22 @@ export default async function DashboardPage() {
                   {scan.anggota?.nama?.[0] ?? '?'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {scan.anggota?.nama ?? '-'}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{scan.anggota?.nama ?? '-'}</p>
                   <p className="text-xs text-gray-500">
                     No. {scan.anggota?.nomor_anggota} · {scan.anggota?.tingkatan}
                     {scan.anggota?.ranting ? ` · ${scan.anggota.ranting}` : ''}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <span
-                    className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                      scan.status === 'Hadir'
-                        ? 'bg-green-100 text-green-700'
-                        : scan.status === 'Terlambat'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-blue-100 text-blue-700'
-                    }`}
-                  >
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    scan.status === 'Hadir' ? 'bg-green-100 text-green-700'
+                    : scan.status === 'Terlambat' ? 'bg-yellow-100 text-yellow-700'
+                    : 'bg-blue-100 text-blue-700'
+                  }`}>
                     {scan.status}
                   </span>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(scan.waktu_scan).toLocaleTimeString('id-ID', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {new Date(scan.waktu_scan).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -293,6 +281,25 @@ export default async function DashboardPage() {
           </div>
         )}
       </Card>
+    </>
+  )
+}
+
+export default async function DashboardPage() {
+  const today = getTanggalHariIni()
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Header — tampil langsung tanpa menunggu data */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-gray-500 text-sm mt-1">{formatTanggal(today)}</p>
+      </div>
+
+      {/* Data di-stream — skeleton tampil dulu, data menyusul */}
+      <Suspense fallback={<StatsSkeleton />}>
+        <DashboardData />
+      </Suspense>
     </div>
   )
 }

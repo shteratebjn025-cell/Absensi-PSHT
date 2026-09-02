@@ -36,10 +36,11 @@ function LaporanContent() {
   const filterTingkatan = searchParams.get('tingkatan') ?? ''
   const filterCabang = searchParams.get('cabang') ?? ''
   const filterRanting = searchParams.get('ranting') ?? ''
-  const sudahCari = searchParams.get('cari') === '1'
 
   const [logs, setLogs] = useState<AbsensiLog[]>([])
   const [loading, setLoading] = useState(false)
+  // Tandai sudah pernah fetch minimal sekali
+  const [pernahFetch, setPernahFetch] = useState(false)
 
   // Helper: update satu atau lebih URL params tanpa reload
   const setParams = useCallback(
@@ -58,7 +59,6 @@ function LaporanContent() {
   )
 
   const fetchLogs = useCallback(async () => {
-    if (!sudahCari) return
     setLoading(true)
 
     let query = supabase
@@ -85,17 +85,16 @@ function LaporanContent() {
 
     setLogs(hasil)
     setLoading(false)
-  }, [sudahCari, mode, tanggal, tanggalDari, tanggalSampai, filterStatus, filterTingkatan, filterCabang, filterRanting, supabase])
+    setPernahFetch(true)
+  }, [mode, tanggal, tanggalDari, tanggalSampai, filterStatus, filterTingkatan, filterCabang, filterRanting, supabase])
 
-  // Jalankan fetch otomatis saat URL params berubah (termasuk saat refresh)
+  // Fetch otomatis saat URL params berubah (termasuk pertama kali buka)
   useEffect(() => {
     fetchLogs()
   }, [fetchLogs])
 
   const handleCari = () => {
-    setParams({ cari: '1' })
-    // Jika sudahCari sudah '1', params tidak berubah → panggil manual
-    if (sudahCari) fetchLogs()
+    fetchLogs()
   }
 
   const handleExport = () => {
@@ -199,7 +198,7 @@ function LaporanContent() {
 
           <Button onClick={handleCari} loading={loading} className="self-end">
             <Search className="h-4 w-4" />
-            Cari
+            Refresh
           </Button>
           {logs.length > 0 && (
             <Button variant="outline" onClick={handleExport} className="self-end">
@@ -210,7 +209,7 @@ function LaporanContent() {
         </div>
 
         {/* Filter lanjutan — muncul setelah ada hasil */}
-        {sudahCari && logs.length > 0 && (
+        {pernahFetch && logs.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center pt-1 border-t">
             <Filter className="h-4 w-4 text-gray-400" />
             <span className="text-xs text-gray-500">Filter hasil:</span>
@@ -252,7 +251,7 @@ function LaporanContent() {
       </div>
 
       {/* Ringkasan */}
-      {sudahCari && !loading && (
+      {pernahFetch && !loading && (
         <div className="flex gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg border">
             <span className="text-sm text-gray-600">Total:</span>
@@ -274,7 +273,7 @@ function LaporanContent() {
       )}
 
       {/* Tabel hasil */}
-      {sudahCari && (
+      {pernahFetch && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-10 text-center text-gray-400">Memuat data...</div>
