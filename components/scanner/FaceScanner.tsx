@@ -156,8 +156,8 @@ export function FaceScanner({
 
       const { data, error } = await supabase.rpc('match_face', {
         query_embedding: embedding,
-        match_threshold: 0.60,  // turun dari 0.75 → lebih toleran terhadap variasi pencahayaan & sudut
-        match_count: 1,
+        match_threshold: 0.68,  // threshold lebih ketat untuk kurangi false positive
+        match_count: 3,         // ambil top-3 untuk cek confidence gap
       })
 
       if (error) throw error
@@ -171,6 +171,28 @@ export function FaceScanner({
       }
 
       const matched = data[0]
+
+      // Cek confidence gap: jika ada kandidat ke-2 dan selisihnya < 0.06,
+      // artinya sistem tidak cukup yakin — tolak untuk hindari salah identifikasi
+      if (data.length > 1) {
+        const gap = matched.similarity - data[1].similarity
+        if (gap < 0.06) {
+          setScanState('not_found')
+          setMessage('Wajah tidak dapat dikenali dengan pasti. Coba lagi.')
+          isScanningRef.current = false
+          setTimeout(() => setScanState('idle'), 3000)
+          return
+        }
+      }
+
+      // Tolak jika similarity terlalu rendah meski lolos threshold DB
+      if (matched.similarity < 0.72) {
+        setScanState('not_found')
+        setMessage('Wajah tidak dikenal. Hubungi admin.')
+        isScanningRef.current = false
+        setTimeout(() => setScanState('idle'), 3000)
+        return
+      }
       const today = new Date().toISOString().split('T')[0]
 
       const { data: existing } = await supabase

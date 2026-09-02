@@ -21,19 +21,21 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<Mode>('choose')
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [pendingEmbedding, setPendingEmbedding] = useState<number[] | null>(null)
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const supabase = createClient()
 
   /**
-   * Capture langsung dari video element dan langsung proses.
-   * Tidak lewat base64 — pipeline identik dengan FaceScanner saat scan.
+   * Capture langsung dari video element dan langsung ekstrak embedding.
+   * Embedding disimpan di state — tombol "Simpan Wajah" tinggal upload ke DB.
+   * TIDAK proses ulang dari JPEG, agar pipeline identik dengan FaceScanner saat scan.
    */
   const capture = useCallback(async () => {
     const video = webcamRef.current?.video
     if (!video) return
 
-    // Buat preview dari video (hanya untuk tampilan, bukan untuk proses)
+    // Preview untuk tampilan
     const previewCanvas = document.createElement('canvas')
     previewCanvas.width = video.videoWidth || 640
     previewCanvas.height = video.videoHeight || 480
@@ -41,9 +43,25 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
     if (!ctx) return
     ctx.drawImage(video, 0, 0)
     setCapturedImage(previewCanvas.toDataURL('image/jpeg', 0.85))
+    setPendingEmbedding(null)
+    setStatus('Mengekstrak embedding wajah...')
+    setLoading(true)
 
-    // Langsung proses dari video element — pipeline sama dengan scanner
-    await processImage(video)
+    // Ekstrak embedding langsung dari video — identik dengan pipeline scan
+    try {
+      const embedding = await extractEmbedding(video)
+      if (!embedding) {
+        setStatus('Wajah tidak terdeteksi. Coba foto lain dengan pencahayaan lebih baik.')
+        setLoading(false)
+        return
+      }
+      setPendingEmbedding(embedding)
+      setStatus('Wajah terdeteksi. Klik "Simpan Wajah" untuk menyimpan.')
+    } catch {
+      setStatus('Gagal ekstrak wajah. Coba lagi.')
+    } finally {
+      setLoading(false)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const processImage = async (
@@ -61,19 +79,7 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
         return
       }
 
-      setStatus('Menyimpan ke database...')
-
-      const { data, error } = await supabase
-        .from('anggota')
-        .update({ face_embedding: embedding })
-        .eq('id', anggota.id)
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setStatus('Berhasil! Data wajah tersimpan.')
-      setTimeout(() => onSuccess(data as Anggota), 1000)
+      await saveEmbedding(embedding)
     } catch (err) {
       console.error(err)
       setStatus('Gagal menyimpan. Coba lagi.')
@@ -82,11 +88,33 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
     }
   }
 
+  const saveEmbedding = async (embedding: number[]) => {
+    setLoading(true)
+    setStatus('Menyimpan ke database...')
+
+      try {
+        const { data, error } = await supabase
+          .from('anggota')
+          .update({ face_embedding: embedding })
+          .eq('id', anggota.id)
+          .select()
+          .single()
+
+        if (error) throw error
+
+        setStatus('Berhasil! Data wajah tersimpan.')
+        setTimeout(() => onSuccess(data as Anggota), 1000)
+      } catch (err) {
+        console.error(err)
+        setStatus('Gagal menyimpan. Coba lagi.')
+      } finally {
+        setLoading(false)
+      }
+  }
+
   const handleCameraEnroll = async () => {
-    if (!capturedImage) return
-    const img = new Image()
-    img.src = capturedImage
-    img.onload = () => processImage(img)
+    if (!pendingEmbedding) return
+    await saveEmbedding(pendingEmbedding)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,7 +226,7 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => { setCapturedImage(null); setStatus('') }}
+                  onClick={() => { setCapturedImage(null); setStatus(''); setPendingEmbedding(null) }}
                   disabled={loading}
                   className="flex-1"
                 >
@@ -208,7 +236,7 @@ export function EnrollFace({ anggota, onSuccess, onCancel }: EnrollFaceProps) {
                 <Button
                   onClick={handleCameraEnroll}
                   loading={loading}
-                  disabled={loading}
+                  disabled={loading || !pendingEmbedding}
                   className="flex-1"
                 >
                   <Check className="h-4 w-4" />
