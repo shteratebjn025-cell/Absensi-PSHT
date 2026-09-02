@@ -3,15 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
+    "dev:https": "next dev --experimental-https --experimental-https-key certificates/key.pem --experimental-https-cert certificates/cert.pem --hostname 0.0.0.0 --port 3443",
+    "ca-server": "node ca-server.mjs",
+    "setup": "node -e \"const {networkInterfaces}=require('os');const ip=Object.values(networkInterfaces()).flat().find(i=>i.family==='IPv4'&&!i.internal)?.address||'localhost';console.log('\\n=== PSHT Absensi Setup ===');console.log('1. Jalankan: npm run dev:https');console.log('2. Jalankan: npm run ca-server');console.log('3. Di HP buka: http://'+ip+':3001')\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.38.0",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-dropzone": "^20.1.1",
+    "react-webcam": "^7.2.0",
+    "tailwind-merge": "^3.6.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
